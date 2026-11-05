@@ -23,9 +23,9 @@ env:
 jobs:
   test:
     name: Teste hidro-core
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test -p hidro-core
@@ -35,7 +35,7 @@ jobs:
     needs: test
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
@@ -80,14 +80,14 @@ jobs:
           hdiutil create -volname HidroCalc -srcfolder dist -ov -format UDZO "HidroCalc-${VERSION}-macos.dmg"
           echo "ARTIFACT=HidroCalc-${VERSION}-macos.dmg" >> "$GITHUB_ENV"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: HidroCalc-macos
           path: ${{ env.ARTIFACT }}
 
       - name: Release
         if: github.ref_type == 'tag'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: ${{ env.ARTIFACT }}
 
@@ -96,7 +96,7 @@ jobs:
     needs: test
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
@@ -115,13 +115,13 @@ jobs:
           Compress-Archive -Path dist/* -DestinationPath $zip -Force
           "ARTIFACT=$zip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: HidroCalc-windows
           path: ${{ env.ARTIFACT }}
 
       - name: Release
         if: github.ref_type == 'tag'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: ${{ env.ARTIFACT }}
