@@ -31,6 +31,20 @@ pub struct TerrainGrid {
     pub key: String,
 }
 
+impl TerrainGrid {
+    /// Grila e utilizabilă: dimensiuni în limite, câte o cotă pe nod, limite finite.
+    /// Grila vine din proiect (posibil importat), deci nu se presupune nimic despre ea.
+    pub fn is_valid(&self) -> bool {
+        (2..=MAX_NODES).contains(&self.nx)
+            && (2..=MAX_NODES).contains(&self.ny)
+            && self.heights.len() == self.nx * self.ny
+            && [self.min_x, self.min_y, self.max_x, self.max_y].iter().all(|v| v.is_finite())
+            && self.max_x > self.min_x
+            && self.max_y > self.min_y
+            && self.heights.iter().flatten().all(|h| h.is_finite())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Bounds {
     pub min_x: f64,
@@ -61,7 +75,7 @@ pub fn schema_bounds(schema: &[SchemaElement]) -> Option<Bounds> {
 }
 
 pub fn grid_covers(g: Option<&TerrainGrid>, b: &Bounds, key: &str) -> bool {
-    g.is_some_and(|g| g.key == key && g.min_x <= b.min_x && g.min_y <= b.min_y && g.max_x >= b.max_x && g.max_y >= b.max_y)
+    g.is_some_and(|g| g.is_valid() && g.key == key && g.min_x <= b.min_x && g.min_y <= b.min_y && g.max_x >= b.max_x && g.max_y >= b.max_y)
 }
 
 /// Nodurile grilei de teren (coordonate schemă) pentru zona dată, cu margine.
@@ -84,6 +98,9 @@ pub fn grid_nodes(b: &Bounds, scale_ratio: f64) -> (Bounds, usize, usize, Vec<(f
 
 /// Interpolare biliniară în grilă; `None` în afara ei sau lângă noduri lipsă.
 pub fn sample_grid(g: &TerrainGrid, x: f64, y: f64) -> Option<f64> {
+    if !g.is_valid() {
+        return None;
+    }
     let fx = (x - g.min_x) / (g.max_x - g.min_x) * (g.nx - 1) as f64;
     let fy = (y - g.min_y) / (g.max_y - g.min_y) * (g.ny - 1) as f64;
     if !(fx >= 0.0 && fy >= 0.0 && fx <= (g.nx - 1) as f64 && fy <= (g.ny - 1) as f64) {
@@ -154,7 +171,7 @@ pub struct Input<'a> {
 
 pub fn build(inp: &Input) -> Scene {
     let m = meters_per_px(inp.scale_ratio);
-    let grid = inp.terrain.filter(|g| g.heights.iter().any(Option::is_some) && g.nx >= 2 && g.ny >= 2);
+    let grid = inp.terrain.filter(|g| g.is_valid() && g.heights.iter().any(Option::is_some));
     let residuals: Vec<(f64, f64, f64)> = match grid {
         Some(g) => inp.topo.iter().filter_map(|&(x, y, z)| sample_grid(g, x, y).map(|h| (x, y, z - h))).collect(),
         None => Vec::new(),
@@ -233,7 +250,7 @@ pub fn build(inp: &Input) -> Scene {
             let y = g.min_y + (g.max_y - g.min_y) * j as f64 / (g.ny - 1) as f64;
             for i in 0..g.nx {
                 let x = g.min_x + (g.max_x - g.min_x) * i as f64 / (g.nx - 1) as f64;
-                let h = g.heights[j * g.nx + i].unwrap_or(fallback) + correction(x, y);
+                let h = g.heights.get(j * g.nx + i).copied().flatten().unwrap_or(fallback) + correction(x, y);
                 hs[j * g.nx + i] = h;
                 t_min = t_min.min(h);
                 t_max = t_max.max(h);
@@ -312,6 +329,10 @@ pub fn build(inp: &Input) -> Scene {
 mod tests {
     use super::*;
 
+    fn inp_ref<'a>(schema: &'a [SchemaElement], sections: &'a [NetworkSection]) -> Input<'a> {
+        Input { schema, sections, scale_ratio: 1000.0, pipe_depth: 1.1, exaggeration: 1.0, reservoir_ground: 0.0, terrain: None, topo: &[] }
+    }
+
     #[test]
     fn pipe_sits_at_ground_minus_depth_and_grid_samples() {
         let tr = SchemaElement { kind: SchemaKind::Tronson, x: 0.0, y: 0.0, x2: Some(1000.0), y2: Some(0.0), label: Some("Tr1".into()), ..Default::default() };
@@ -329,6 +350,18 @@ mod tests {
         let g = TerrainGrid { min_x: 0.0, min_y: 0.0, max_x: 10.0, max_y: 10.0, nx: 2, ny: 2, heights: vec![Some(0.0), Some(10.0), Some(10.0), Some(20.0)], key: String::new() };
         assert_eq!(sample_grid(&g, 5.0, 5.0), Some(10.0));
         assert_eq!(sample_grid(&g, 11.0, 5.0), None);
+        // Grile malformate (ex. dintr-un JSON importat) sunt ignorate, nu opresc aplicația.
+        for bad in [
+            TerrainGrid { heights: vec![Some(1.0)], ..g.clone() },
+            TerrainGrid { nx: 100_000, ..g.clone() },
+            TerrainGrid { max_x: f64::NAN, ..g.clone() },
+            TerrainGrid { max_x: 0.0, ..g.clone() },
+        ] {
+            assert!(!bad.is_valid());
+            assert_eq!(sample_grid(&bad, 5.0, 5.0), None);
+            let sc = build(&Input { terrain: Some(&bad), ..inp_ref(&[], &[]) });
+            assert!(sc.terrain.is_none());
+        }
         let (_, nx, ny, pts) = grid_nodes(&Bounds { min_x: 0.0, min_y: 0.0, max_x: 1000.0, max_y: 0.0 }, 1000.0);
         assert!(nx >= MIN_NODES && ny >= MIN_NODES && pts.len() == nx * ny && nx <= MAX_NODES);
     }

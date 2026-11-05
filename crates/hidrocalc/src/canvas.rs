@@ -12,7 +12,6 @@ use hidro_core::model::{ProjectData, SchemaElement, SchemaKind};
 use hidro_core::schema::meters_per_px;
 use serde_json::{json, Value};
 
-const CANVAS_H: f32 = 520.0;
 const ZOOM_MIN: f32 = 0.05;
 const ZOOM_MAX: f32 = 40.0;
 const SNAP_PX: f32 = 14.0;
@@ -476,7 +475,8 @@ impl CanvasUi {
         });
     }
 
-    pub fn ui(&mut self, ui: &mut Ui, t: &I18n, p: &mut ProjectData) {
+    /// `height` = înălțimea zonei de desen (reglabilă, vezi `network_ui::area_height`).
+    pub fn ui(&mut self, ui: &mut Ui, t: &I18n, p: &mut ProjectData, height: f32) {
         let ctx = ui.ctx().clone();
         self.finish_png(&ctx, t, p);
         self.map.poll(p);
@@ -487,7 +487,11 @@ impl CanvasUi {
         self.toolbar(ui, t, p);
         ui.add_space(6.0);
         self.breadcrumb(ui, t, p);
-        let (rect, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), CANVAS_H), Sense::click_and_drag());
+        let (rect, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::click_and_drag());
+        // La redimensionarea zonei, centrul vederii rămâne pe loc.
+        if self.last_rect.is_positive() && self.last_rect.size() != rect.size() && self.fitted {
+            self.pan += (rect.size() - self.last_rect.size()) / 2.0;
+        }
         if !self.fitted {
             let lvl = self.level(p).clone();
             self.fit(&lvl, rect);
@@ -1261,7 +1265,7 @@ mod tests {
                     crate::theme::install(ui.ctx());
                     s.themed = true;
                 }
-                s.c.ui(ui, &s.t, &mut s.p)
+                s.c.ui(ui, &s.t, &mut s.p, 520.0)
             },
             St { c, p: ProjectData::default(), t: I18n::new(Lang::Ro), themed: false },
         )

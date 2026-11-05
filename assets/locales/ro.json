@@ -723,6 +723,10 @@
     "mapLock": "Blochează harta:",
     "lockPan": "⬌ Pan",
     "lockZoom": "⊕ Zoom",
-    "lockRotation": "↻ Rotire"
+    "lockRotation": "↻ Rotire",
+    "resizeArea": "Trage pentru a mări sau micșora zona de desen · dublu-click = înălțimea implicită",
+    "fullscreen": "Ecran complet",
+    "exitFullscreen": "Ieși din ecran complet",
+    "fullscreenTip": "Zona de desen (plan sau 3D) ocupă toată fereastra · ESC pentru ieșire"
   }
 }

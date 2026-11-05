@@ -723,6 +723,10 @@
     "mapLock": "Lock map:",
     "lockPan": "⬌ Pan",
     "lockZoom": "⊕ Zoom",
-    "lockRotation": "↻ Rotation"
+    "lockRotation": "↻ Rotation",
+    "resizeArea": "Drag to enlarge or shrink the drawing area · double-click = default height",
+    "fullscreen": "Full screen",
+    "exitFullscreen": "Exit full screen",
+    "fullscreenTip": "The drawing area (plan or 3D) fills the whole window · ESC to exit"
   }
 }

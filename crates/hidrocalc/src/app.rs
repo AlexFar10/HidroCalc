@@ -480,6 +480,9 @@ impl HidroApp {
             }
         }
 
+        // Ecran complet (pasul 8): fără bara laterală și fără pași, zona de desen ia tot spațiul.
+        let expanded = self.net_ui.expanded && self.project.as_ref().is_some_and(|p| p.current_step == 8);
+        if !expanded {
         egui::Panel::left("sidebar")
             .exact_size(270.0)
             .resizable(false)
@@ -493,6 +496,7 @@ impl HidroApp {
         egui::Panel::top("stepper")
             .frame(egui::Frame::new().fill(p.panel).inner_margin(Margin::symmetric(12, 8)).stroke(Stroke::new(1.0, p.border)))
             .show(ui, |ui| self.stepper(ui));
+        }
 
         egui::CentralPanel::default().frame(egui::Frame::new().fill(p.bg).inner_margin(Margin::symmetric(20, 18))).show(ui, |ui| {
             let step = self.project.as_ref().map_or(1, |p| p.current_step);
@@ -789,6 +793,11 @@ mod snapshots {
             h.run_steps(3);
             h.render().unwrap().save(out.join(format!("step8-3d-{suffix}.png"))).unwrap();
             h.state_mut().net_ui.show_3d = false;
+            // Ecran complet: fără bara laterală și pași
+            h.state_mut().net_ui.expanded = true;
+            h.run_steps(3);
+            h.render().unwrap().save(out.join(format!("step8-fullscreen-{suffix}.png"))).unwrap();
+            h.state_mut().net_ui.expanded = false;
             h.state_mut().close_project_for_test();
             h.run_steps(3);
             h.render().unwrap().save(out.join(format!("home-list-{suffix}.png"))).unwrap();

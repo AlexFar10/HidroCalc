@@ -27,6 +27,8 @@ pub struct NetworkUi {
     pub canvas: crate::canvas::CanvasUi,
     pub view3d: crate::view3d::View3D,
     pub show_3d: bool,
+    /// Ecran complet: zona de desen ocupă toată fereastra (fără bara laterală și pași).
+    pub expanded: bool,
     /// Export cerut din interfață; îl execută aplicația după desenarea cadrului.
     pub export: Option<ExportKind>,
 }
@@ -40,6 +42,40 @@ pub enum ExportKind {
     Memoriu,
     /// Alegerea unui alt șablon (true = Word, false = Excel), apoi exportul.
     PickTemplate(bool),
+}
+
+const AREA_ID: &str = "hidrocalc-area-height";
+pub const AREA_MIN: f32 = 300.0;
+const AREA_DEFAULT: f32 = 520.0;
+
+/// Înălțimea zonei de desen (2D și 3D): reglată de utilizator și păstrată între sesiuni;
+/// în ecran complet, tot spațiul vertical disponibil.
+pub fn area_height(ui: &Ui, expanded: bool) -> f32 {
+    if expanded {
+        return (ui.ctx().content_rect().height() - 250.0).max(AREA_MIN);
+    }
+    ui.ctx().data_mut(|d| d.get_persisted::<f32>(egui::Id::unique(AREA_ID))).unwrap_or(AREA_DEFAULT)
+}
+
+/// Mânerul de sub zona de desen: tras în sus/jos o micșorează/mărește.
+fn resize_grip(ui: &mut Ui, t: &I18n) {
+    let pl = pal(ui);
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 12.0), egui::Sense::drag());
+    let resp = resp.on_hover_cursor(egui::CursorIcon::ResizeVertical).on_hover_text(t.t("native.resizeArea"));
+    let c = if resp.hovered() || resp.dragged() { pl.accent } else { pl.border_strong };
+    let mid = rect.center();
+    for dy in [-2.0, 2.0] {
+        ui.painter().line_segment([mid + egui::vec2(-24.0, dy), mid + egui::vec2(24.0, dy)], Stroke::new(1.5, c));
+    }
+    if resp.dragged() {
+        let id = egui::Id::unique(AREA_ID);
+        let cur = ui.ctx().data_mut(|d| d.get_persisted::<f32>(id)).unwrap_or(AREA_DEFAULT);
+        let h = (cur + resp.drag_delta().y).clamp(AREA_MIN, 3000.0);
+        ui.ctx().data_mut(|d| d.insert_persisted(id, h));
+    }
+    if resp.double_clicked() {
+        ui.ctx().data_mut(|d| d.insert_persisted(egui::Id::unique(AREA_ID), AREA_DEFAULT));
+    }
 }
 
 pub fn error_text(t: &I18n, e: &NetworkError) -> String {
@@ -349,13 +385,29 @@ pub fn step8(ui: &mut Ui, t: &I18n, p: &mut ProjectData, st: &mut NetworkUi) -> 
                 st.show_3d = three;
             }
         }
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let key = if st.expanded { "native.exitFullscreen" } else { "native.fullscreen" };
+            if ui.add(egui::Button::new(format!("⛶ {}", t.t(key))).selected(st.expanded)).on_hover_text(t.t("native.fullscreenTip")).clicked() {
+                st.expanded = !st.expanded;
+            }
+        });
     });
+    if st.expanded && ui.input(|i| i.key_pressed(egui::Key::Escape)) && st.canvas.selected.is_none() {
+        st.expanded = false;
+    }
     ui.add_space(4.0);
+    let area_h = area_height(ui, st.expanded);
     w::card(ui, |ui| {
         if st.show_3d {
-            st.view3d.ui(ui, t, p);
+            st.view3d.ui(ui, t, p, area_h);
+            if !st.expanded {
+                resize_grip(ui, t);
+            }
         } else {
-            st.canvas.ui(ui, t, p);
+            st.canvas.ui(ui, t, p, area_h);
+            if !st.expanded {
+                resize_grip(ui, t);
+            }
             if std::mem::take(&mut st.canvas.export_dxf) {
                 st.export = Some(ExportKind::Dxf);
             }
@@ -608,4 +660,52 @@ fn documentation(ui: &mut Ui, t: &I18n, net: &mut NetworkUi) {
             net.export = Some(ExportKind::PickTemplate(word));
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::i18n::Lang;
+    use egui_kittest::Harness;
+
+    #[test]
+    fn dragging_the_grip_resizes_the_area() {
+        let t = I18n::new(Lang::Ro);
+        let mut h = Harness::new_ui_state(
+            |ui, height: &mut f32| {
+                ui.add_space(100.0);
+                resize_grip(ui, &t);
+                *height = area_height(ui, false);
+            },
+            0.0_f32,
+        );
+        h.run();
+        assert_eq!(*h.state(), AREA_DEFAULT);
+        // Mânerul are 12 px înălțime, imediat sub spațiul de 100 px.
+        let grip = egui::pos2(200.0, 100.0 + 8.0 + 6.0);
+        h.hover_at(grip);
+        h.run();
+        h.drag_at(grip);
+        h.run();
+        for i in 1..=4 {
+            h.hover_at(grip + egui::vec2(0.0, 30.0 * i as f32));
+            h.run();
+        }
+        h.drop_at(grip + egui::vec2(0.0, 120.0));
+        h.run();
+        assert!((*h.state() - (AREA_DEFAULT + 120.0)).abs() < 2.0, "înălțime: {}", h.state());
+        // Nu sub minim (mânerul rămâne la aceeași poziție în acest test)
+        h.hover_at(grip);
+        h.run();
+        h.drag_at(grip);
+        h.run();
+        for i in 1..=4 {
+            h.hover_at(grip - egui::vec2(0.0, 300.0 * i as f32));
+            h.run();
+        }
+        h.drop_at(grip + egui::vec2(0.0, -1100.0));
+        h.run();
+        assert_eq!(*h.state(), AREA_MIN);
+        let _ = Stroke::NONE;
+    }
 }

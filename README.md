@@ -24,6 +24,46 @@ cargo build --release -p hidrocalc
 `cargo test -p hidrocalc snapshots` randează fără fereastră ecranul de start și cei
 9 pași (temă luminoasă și întunecată) în `target/ui-snapshots/`, pentru verificare vizuală.
 
+## Aplicații pentru macOS și Windows
+
+Workflow-ul `.github/workflows/build.yml` construiește:
+
+- **macOS** — `HidroCalc-<versiune>-macos.dmg` (aplicație universală Apple Silicon + Intel);
+- **Windows** — `HidroCalc-<versiune>-windows-x64.zip` (`HidroCalc.exe`, cu iconiță).
+
+Pornire: GitHub → **Actions** → **Build** → **Run workflow** (fișierele apar la *Artifacts*), sau un tag:
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0   # publică și un GitHub Release
+```
+
+Aplicațiile nu sunt semnate cu certificat: pe macOS, prima deschidere cu clic dreapta → *Deschide*;
+pe Windows, la SmartScreen *Mai multe informații* → *Rulează oricum*.
+
+## Puncte topografice (import)
+
+Pasul 8 → **Hartă** → *Puncte topo* (harta trebuie ancorată). Formate acceptate:
+
+- **CSV / TXT** — câte un punct pe rând: `[Nume] X Y Z`; separator `;`, tab, spațiu sau virgulă;
+  zecimalele cu `.` sau `,`. Rândurile de antet și cele care încep cu `#` sunt ignorate. Fără nume,
+  dacă rândul are 4 numere, primul e numărul punctului.
+- **GPX** — `wpt`, `trkpt`, `rtept` cu `<ele>` (cota).
+- **KML** (Google Earth) — doar cu `altitudeMode` = `absolute` (implicit KML nu are cote reale).
+
+Sistemul de coordonate (CSV): *Detectare automată* (WGS84 dacă valorile sunt grade, altfel Stereo 70),
+*Stereo 70 — X = Nord, Y = Est* (convenția topografică românească), *Stereo 70 — Est, Nord* sau
+*WGS84 — latitudine, longitudine* (ordinea longitudine, latitudine e recunoscută pentru România).
+Cotele valide: între −500 și 9000 m. Exemplu Stereo 70:
+
+```
+Nr;X;Y;Z
+P1;476000.00;208000.00;91.50
+P2;476012.35;208040.10;92.10
+```
+
+Un punct aflat la cel mult *raza de preluare* (implicit 5 m) de un capăt de tronson îi dă cota, cu
+prioritate față de modelul terenului (DEM); cotele introduse manual nu sunt suprascrise.
+
 ## Rețea
 
 Harta folosește dalele `tile.openstreetmap.org` (păstrate în cache-ul aplicației) și căutarea

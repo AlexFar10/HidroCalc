@@ -1,0 +1,127 @@
+# Construiește aplicația pentru macOS (.dmg, universal: Apple Silicon + Intel) și
+# Windows (.zip cu HidroCalc.exe).
+#
+# - pornire manuală: tab-ul Actions → „Build” → „Run workflow” (fișierele apar la Artifacts);
+# - la un tag `v*` (ex. `git tag v0.2.0 && git push origin v0.2.0`) se publică și un Release.
+#
+# Aplicațiile nu sunt semnate cu un certificat Apple/Microsoft: la prima deschidere,
+# macOS cere clic dreapta → Deschide, iar Windows SmartScreen „Mai multe informații → Rulează oricum”.
+
+name: Build
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Teste hidro-core
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p hidro-core
+
+  macos:
+    name: macOS (universal)
+    needs: test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build (arm64 + x86_64)
+        run: |
+          cargo build --release -p hidrocalc --target aarch64-apple-darwin
+          cargo build --release -p hidrocalc --target x86_64-apple-darwin
+
+      - name: Pachet .app + .dmg
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          [[ "$GITHUB_REF_TYPE" == "tag" ]] || VERSION="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+          APP=dist/HidroCalc.app
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          lipo -create -output "$APP/Contents/MacOS/HidroCalc" \
+            target/aarch64-apple-darwin/release/hidrocalc \
+            target/x86_64-apple-darwin/release/hidrocalc
+          cp assets/icons/icon.icns "$APP/Contents/Resources/HidroCalc.icns"
+          cat > "$APP/Contents/Info.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleName</key><string>HidroCalc</string>
+            <key>CFBundleDisplayName</key><string>HidroCalc</string>
+            <key>CFBundleIdentifier</key><string>ro.hidro.HidroCalc</string>
+            <key>CFBundleExecutable</key><string>HidroCalc</string>
+            <key>CFBundleIconFile</key><string>HidroCalc</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>${VERSION}</string>
+            <key>CFBundleVersion</key><string>${VERSION}</string>
+            <key>LSMinimumSystemVersion</key><string>11.0</string>
+            <key>NSHighResolutionCapable</key><true/>
+          </dict>
+          </plist>
+          EOF
+          # semnătură ad-hoc (fără certificat) — necesară pe Apple Silicon
+          codesign --force --deep --sign - "$APP"
+          ln -s /Applications dist/Applications
+          hdiutil create -volname HidroCalc -srcfolder dist -ov -format UDZO "HidroCalc-${VERSION}-macos.dmg"
+          echo "ARTIFACT=HidroCalc-${VERSION}-macos.dmg" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HidroCalc-macos
+          path: ${{ env.ARTIFACT }}
+
+      - name: Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ARTIFACT }}
+
+  windows:
+    name: Windows (x64)
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --release -p hidrocalc
+
+      - name: Pachet .zip
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF_TYPE -eq "tag") { $v = $env:GITHUB_REF_NAME.TrimStart("v") }
+          else { $v = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value }
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item target/release/hidrocalc.exe dist/HidroCalc.exe
+          Copy-Item assets/fonts/LICENSE_DEJAVU.txt dist/
+          $zip = "HidroCalc-$v-windows-x64.zip"
+          Compress-Archive -Path dist/* -DestinationPath $zip -Force
+          "ARTIFACT=$zip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HidroCalc-windows
+          path: ${{ env.ARTIFACT }}
+
+      - name: Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ARTIFACT }}

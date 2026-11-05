@@ -16,7 +16,6 @@ use hidro_core::scene3d::{self, Scene, TerrainGrid, Vec3};
 use serde_json::{json, Value};
 use std::sync::mpsc::{channel, Receiver};
 
-const VIEW_H: f32 = 540.0;
 
 pub struct View3D {
     yaw: f32,
@@ -181,7 +180,7 @@ impl View3D {
         })
     }
 
-    pub fn ui(&mut self, ui: &mut Ui, t: &I18n, p: &mut ProjectData) {
+    pub fn ui(&mut self, ui: &mut Ui, t: &I18n, p: &mut ProjectData, height: f32) {
         let pl = pal(ui);
         let ctx = ui.ctx().clone();
         self.sync_grid(&ctx, p);
@@ -208,7 +207,7 @@ impl View3D {
         });
 
         let scene = Self::scene(p);
-        let (rect, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), VIEW_H), Sense::click_and_drag());
+        let (rect, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::click_and_drag());
         self.interact(ui, &resp, &scene);
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, 10.0, Color32::from_rgb(0xEE, 0xF2, 0xF6));
