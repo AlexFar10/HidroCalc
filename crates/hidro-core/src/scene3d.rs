@@ -149,6 +149,8 @@ pub struct Terrain {
 #[derive(Debug, Clone)]
 pub struct Scene {
     pub terrain: Option<Terrain>,
+    /// Terenul e interpolat din cotele tronsoanelor (nu din DEM).
+    pub terrain_interpolated: bool,
     pub topo: Vec<Vec3>,
     pub pipes: Vec<Pipe>,
     pub nodes: Vec<Node>,
@@ -167,11 +169,74 @@ pub struct Input<'a> {
     pub terrain: Option<&'a TerrainGrid>,
     /// Puncte topo în coordonate schemă: (x, y, cota).
     pub topo: &'a [(f64, f64, f64)],
+    /// Fără grilă DEM: generează solul prin interpolare din cotele tronsoanelor.
+    pub interpolate_ground: bool,
+}
+
+const SYNTH_NODES: usize = 41;
+
+/// Sol aproximativ din cotele cunoscute (interpolare cu inversul pătratului distanței),
+/// pe zona schemei plus o margine; folosit când nu există o grilă DEM.
+fn interpolated_grid(known: &[(f64, f64, f64)], extra: &[(f64, f64)]) -> Option<TerrainGrid> {
+    if known.is_empty() {
+        return None;
+    }
+    let pts = known.iter().map(|k| (k.0, k.1)).chain(extra.iter().copied());
+    let (mut x0, mut y0, mut x1, mut y1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+    for (x, y) in pts {
+        x0 = x0.min(x);
+        y0 = y0.min(y);
+        x1 = x1.max(x);
+        y1 = y1.max(y);
+    }
+    let margin = ((x1 - x0).max(y1 - y0) * 0.15).max(40.0);
+    let (x0, y0, x1, y1) = (x0 - margin, y0 - margin, x1 + margin, y1 + margin);
+    let n = SYNTH_NODES;
+    let mut heights = Vec::with_capacity(n * n);
+    for j in 0..n {
+        let y = y0 + (y1 - y0) * j as f64 / (n - 1) as f64;
+        for i in 0..n {
+            let x = x0 + (x1 - x0) * i as f64 / (n - 1) as f64;
+            let (mut num, mut den) = (0.0, 0.0);
+            let mut exact = None;
+            for &(kx, ky, z) in known {
+                let d2 = (kx - x).powi(2) + (ky - y).powi(2);
+                if d2 < 1e-6 {
+                    exact = Some(z);
+                    break;
+                }
+                num += z / d2;
+                den += 1.0 / d2;
+            }
+            heights.push(Some(exact.unwrap_or(num / den)));
+        }
+    }
+    Some(TerrainGrid { min_x: x0, min_y: y0, max_x: x1, max_y: y1, nx: n, ny: n, heights, key: "interpolat".into() })
 }
 
 pub fn build(inp: &Input) -> Scene {
     let m = meters_per_px(inp.scale_ratio);
-    let grid = inp.terrain.filter(|g| g.is_valid() && g.heights.iter().any(Option::is_some));
+    let dem = inp.terrain.filter(|g| g.is_valid() && g.heights.iter().any(Option::is_some));
+    let synth = if dem.is_none() && inp.interpolate_ground {
+        let by_name = |name: &str| inp.sections.iter().find(|s| s.group.is_none() && s.name == name);
+        let mut known = Vec::new();
+        let mut extra = Vec::new();
+        for tr in inp.schema.iter().filter(|e| e.kind == SchemaKind::Tronson) {
+            let sec = tr.label.as_deref().and_then(by_name);
+            let end = (tr.x2.unwrap_or(tr.x), tr.y2.unwrap_or(tr.y));
+            for (p, c) in [((tr.x, tr.y), sec.and_then(|s| s.cota_up)), (end, sec.and_then(|s| s.cota_down))] {
+                match c {
+                    Some(z) => known.push((p.0, p.1, z)),
+                    None => extra.push(p),
+                }
+            }
+        }
+        extra.extend(inp.schema.iter().filter(|e| !matches!(e.kind, SchemaKind::Tronson | SchemaKind::Text)).map(|e| (e.x, e.y)));
+        interpolated_grid(&known, &extra)
+    } else {
+        None
+    };
+    let grid = dem.or(synth.as_ref());
     let residuals: Vec<(f64, f64, f64)> = match grid {
         Some(g) => inp.topo.iter().filter_map(|&(x, y, z)| sample_grid(g, x, y).map(|h| (x, y, z - h))).collect(),
         None => Vec::new(),
@@ -322,7 +387,8 @@ pub fn build(inp: &Input) -> Scene {
         add(&[0.0, (t_max - base) * inp.exaggeration, 0.0]);
     }
     let cy = if lo.is_finite() { (lo + hi) / 2.0 } else { 0.0 };
-    Scene { terrain, topo, pipes, nodes, center: [0.0, cy, 0.0], span, base_elevation: base }
+    let terrain_interpolated = terrain.is_some() && dem.is_none();
+    Scene { terrain, terrain_interpolated, topo, pipes, nodes, center: [0.0, cy, 0.0], span, base_elevation: base }
 }
 
 #[cfg(test)]
@@ -330,7 +396,7 @@ mod tests {
     use super::*;
 
     fn inp_ref<'a>(schema: &'a [SchemaElement], sections: &'a [NetworkSection]) -> Input<'a> {
-        Input { schema, sections, scale_ratio: 1000.0, pipe_depth: 1.1, exaggeration: 1.0, reservoir_ground: 0.0, terrain: None, topo: &[] }
+        Input { schema, sections, scale_ratio: 1000.0, pipe_depth: 1.1, exaggeration: 1.0, reservoir_ground: 0.0, terrain: None, topo: &[], interpolate_ground: false }
     }
 
     #[test]
@@ -339,7 +405,7 @@ mod tests {
         let mut s = NetworkSection::new("a".into(), "Tr1".into());
         s.cota_up = Some(100.0);
         s.cota_down = Some(95.0);
-        let inp = Input { schema: &[tr], sections: &[s], scale_ratio: 1000.0, pipe_depth: 1.1, exaggeration: 2.0, reservoir_ground: 0.0, terrain: None, topo: &[] };
+        let inp = Input { schema: &[tr], sections: &[s], scale_ratio: 1000.0, pipe_depth: 1.1, exaggeration: 2.0, reservoir_ground: 0.0, terrain: None, topo: &[], interpolate_ground: false };
         let sc = build(&inp);
         let p = &sc.pipes[0];
         assert!((sc.base_elevation - (95.0 - 1.1)).abs() < 1e-9);
@@ -362,6 +428,13 @@ mod tests {
             let sc = build(&Input { terrain: Some(&bad), ..inp_ref(&[], &[]) });
             assert!(sc.terrain.is_none());
         }
+        // Fără DEM: solul interpolat trece exact prin cotele capetelor de tronson.
+        let sc = build(&Input { interpolate_ground: true, ..inp_ref(std::slice::from_ref(&inp.schema[0]), inp.sections) });
+        let t = sc.terrain.as_ref().expect("sol interpolat");
+        assert!(sc.terrain_interpolated);
+        assert!((t.min_h - 95.0).abs() < 0.5 && (t.max_h - 100.0).abs() < 0.5, "{} {}", t.min_h, t.max_h);
+        let g_up = sc.pipes[0].ground_start[1];
+        assert!(sc.pipes[0].start[1] < g_up, "conducta e sub sol");
         let (_, nx, ny, pts) = grid_nodes(&Bounds { min_x: 0.0, min_y: 0.0, max_x: 1000.0, max_y: 0.0 }, 1000.0);
         assert!(nx >= MIN_NODES && ny >= MIN_NODES && pts.len() == nx * ny && nx <= MAX_NODES);
     }

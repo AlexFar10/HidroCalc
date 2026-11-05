@@ -727,6 +727,7 @@
     "resizeArea": "Trage pentru a mări sau micșora zona de desen · dublu-click = înălțimea implicită",
     "fullscreen": "Ecran complet",
     "exitFullscreen": "Ieși din ecran complet",
-    "fullscreenTip": "Zona de desen (plan sau 3D) ocupă toată fereastra · ESC pentru ieșire"
+    "fullscreenTip": "Zona de desen (plan sau 3D) ocupă toată fereastra · ESC pentru ieșire",
+    "groundInterpolated": "Sol interpolat din cotele tronsoanelor"
   }
 }

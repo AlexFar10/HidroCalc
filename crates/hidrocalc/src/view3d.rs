@@ -88,6 +88,13 @@ impl View3D {
         p.network_canvas_settings.get("terrainGrid").and_then(|v| serde_json::from_value(v.clone()).ok())
     }
 
+    /// Grila salvată, doar dacă aparține ancorei curente (altfel e de la altă poziție a hărții).
+    fn current_grid(p: &ProjectData) -> Option<TerrainGrid> {
+        let a = map_ui::anchor(p)?;
+        let key = scene3d::terrain_key(&a, map_ui::rotation(p), crate::canvas::scale_ratio(p));
+        Self::terrain_grid(p).filter(|g| g.key == key && g.is_valid())
+    }
+
     /// Descarcă grila de teren DEM dacă lipsește sau nu mai acoperă schema.
     fn sync_grid(&mut self, ctx: &egui::Context, p: &mut ProjectData) {
         if let Some(rx) = &self.grid_rx {
@@ -153,7 +160,7 @@ impl View3D {
             None => Vec::new(),
         };
         let show_terrain = p.network_canvas_settings.get("showTerrain3D").and_then(Value::as_bool) != Some(false);
-        let grid = if show_terrain { Self::terrain_grid(p) } else { None };
+        let grid = if show_terrain { Self::current_grid(p) } else { None };
         scene3d::build(&scene3d::Input {
             schema: &p.network_schema,
             sections: &p.network_sections,
@@ -163,6 +170,7 @@ impl View3D {
             reservoir_ground: p.reservoir.cota_teren,
             terrain: grid.as_ref(),
             topo: &topo,
+            interpolate_ground: show_terrain,
         })
     }
 
@@ -206,7 +214,9 @@ impl View3D {
 
         // Starea terenului
         ui.horizontal_wrapped(|ui| {
-            let status = if map_ui::anchor(p).is_none() {
+            let status = if scene.terrain_interpolated {
+                format!("{} · {}", t.t("native.groundInterpolated"), t.t("view3d.terrainNeedsAnchor"))
+            } else if map_ui::anchor(p).is_none() {
                 t.t("view3d.terrainNeedsAnchor")
             } else if self.grid_rx.is_some() {
                 t.t("view3d.terrainLoading")
@@ -288,7 +298,7 @@ impl View3D {
             let t = -half + span * 1.6 * i as f32 / 32.0;
             let c = if i == 16 { gc } else { gc2 };
             for (a, b) in [([t, gy, -half], [t, gy, half]), ([-half, gy, t], [half, gy, t])] {
-                s3.underlay.push(m3::Line { a, b, color: c, width: 1.0, dashed: false });
+                s3.underlay.push(m3::Line { layer: 0, a, b, color: c, width: 1.0, dashed: false });
             }
         }
 
@@ -318,11 +328,12 @@ impl View3D {
             };
             for t in tris {
                 let v = t.map(|k| Vert { p: pos[k], n: m3::norm(normals[k]), c: color(k) });
-                s3.tris.push(m3::Tri { v, alpha: 0.55, double_sided: true });
+                s3.tris.push(m3::Tri { v, alpha: 0.55, layer: 1, double_sided: true });
             }
         }
 
-        // Conducte: tuburi împărțite în bucăți (sortare corectă față de teren)
+        // Conducte: sub pământ (stratul 0), tuburi împărțite în bucăți pentru sortare
+        s3.layer = 0;
         for p in &scene.pipes {
             let (a, b) = (f3(p.start), f3(p.end));
             let col = p.color.as_deref().and_then(|c| u32::from_str_radix(c.trim_start_matches('#'), 16).ok()).filter(|c| *c != 0x1A1A1A).map(rgb).unwrap_or(rgb(0x2563EB));
@@ -332,10 +343,12 @@ impl View3D {
                 let (t0, t1) = (k as f32 / n as f32, (k + 1) as f32 / n as f32);
                 s3.cylinder(lerp(a, b, t0), lerp(a, b, t1), pipe_r(p.d_ext), pipe_r(p.d_ext), 10, col, 1.0, k == 0 || k == n - 1);
             }
-            // urma pe teren (punctat) și verticalele de la capete
-            s3.line(f3(p.ground_start), f3(p.ground_end), Color32::from_rgb(0xA1, 0x62, 0x07), 1.5, true);
+            // verticalele de la capete (sub pământ) și urma pe sol (deasupra)
             s3.line(f3(p.ground_start), a, Color32::from_rgb(0x78, 0x71, 0x6C), 1.0, false);
             s3.line(f3(p.ground_end), b, Color32::from_rgb(0x78, 0x71, 0x6C), 1.0, false);
+            s3.layer = 2;
+            s3.line(f3(p.ground_start), f3(p.ground_end), Color32::from_rgb(0xA1, 0x62, 0x07), 1.5, true);
+            s3.layer = 0;
         }
 
         // Noduri (modelele procedurale din aplicația React)
@@ -343,6 +356,10 @@ impl View3D {
         for n in &scene.nodes {
             let g = f3(n.ground);
             let up = |dy: f32| [g[0], g[1] + dy, g[2]];
+            // căminele și racordul la conductă sunt sub pământ; restul deasupra
+            s3.layer = 0;
+            s3.line(f3(n.invert), g, Color32::from_rgb(0x78, 0x71, 0x6C), 1.0, false);
+            s3.layer = if matches!(n.kind, SchemaKind::CaminGrav | SchemaKind::CaminAer) { 0 } else { 2 };
             match n.kind {
                 SchemaKind::Hidrant => {
                     s3.cylinder(g, up(h * 0.8), h * 0.15, h * 0.12, 10, rgb(0xDC2626), 1.0, true);
@@ -361,8 +378,8 @@ impl View3D {
                 SchemaKind::Subsistem => s3.bx(g, h * 1.6, h * 0.3, h, rgb(0x14B8A6), 0.6),
                 _ => {}
             }
-            s3.line(f3(n.invert), g, Color32::from_rgb(0x78, 0x71, 0x6C), 1.0, false);
         }
+        s3.layer = 2;
         for tp in &scene.topo {
             s3.sphere(f3(*tp), h * 0.12, rgb(0x16A34A));
         }
@@ -407,4 +424,24 @@ fn label(painter: &egui::Painter, pos: Pos2, text: &str, bg: Color32, fg: Color3
     let r = Rect::from_center_size(pos, g.size()).expand2(Vec2::new(5.0, 2.0));
     painter.rect_filled(r, 3.0, bg);
     painter.galley(r.min + Vec2::new(5.0, 2.0), g, fg);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hidro_core::geo::{compute_tile_zoom, MapAnchor};
+
+    #[test]
+    fn stale_terrain_grid_is_ignored() {
+        let mut p = ProjectData::default();
+        let g = TerrainGrid { min_x: 0.0, min_y: 0.0, max_x: 10.0, max_y: 10.0, nx: 2, ny: 2, heights: vec![Some(1.0); 4], key: "veche".into() };
+        set(&mut p, "terrainGrid", serde_json::to_value(&g).unwrap());
+        assert!(View3D::current_grid(&p).is_none(), "fără ancoră, grila salvată nu se folosește");
+        let a = MapAnchor { lat: 45.75, lng: 21.23, world_x: 0.0, world_y: 0.0, tile_zoom: compute_tile_zoom(45.75, 1000.0) };
+        set(&mut p, "mapAnchor", serde_json::to_value(a).unwrap());
+        assert!(View3D::current_grid(&p).is_none(), "grila altei ancore nu se folosește");
+        let key = scene3d::terrain_key(&a, 0.0, 1000.0);
+        set(&mut p, "terrainGrid", serde_json::to_value(TerrainGrid { key, ..g }).unwrap());
+        assert!(View3D::current_grid(&p).is_some());
+    }
 }

@@ -47,12 +47,15 @@ pub struct Vert {
 pub struct Tri {
     pub v: [Vert; 3],
     pub alpha: f32,
+    /// Strat: 0 = sub pământ, 1 = teren, 2 = deasupra (desenate în această ordine).
+    pub layer: u8,
     /// Fără culling: terenul se vede și de dedesubt.
     pub double_sided: bool,
 }
 
 #[derive(Clone, Copy)]
 pub struct Line {
+    pub layer: u8,
     pub a: V3,
     pub b: V3,
     pub color: Color32,
@@ -62,6 +65,8 @@ pub struct Line {
 
 #[derive(Default)]
 pub struct Scene3 {
+    /// Stratul în care intră geometria adăugată de acum înainte.
+    pub layer: u8,
     pub tris: Vec<Tri>,
     pub lines: Vec<Line>,
     /// Linii desenate înaintea întregii scene (grila de la bază), deci sub teren.
@@ -101,7 +106,7 @@ fn ortho_basis(axis: V3) -> (V3, V3) {
 
 impl Scene3 {
     pub fn tri(&mut self, a: Vert, b: Vert, c: Vert, alpha: f32) {
-        self.tris.push(Tri { v: [a, b, c], alpha, double_sided: false });
+        self.tris.push(Tri { v: [a, b, c], alpha, layer: self.layer, double_sided: false });
     }
 
     /// Cilindru (sau trunchi de con) între `a` și `b`, cu `seg` laturi; `caps` = capace.
@@ -178,7 +183,7 @@ impl Scene3 {
     }
 
     pub fn line(&mut self, a: V3, b: V3, color: Color32, width: f32, dashed: bool) {
-        self.lines.push(Line { a, b, color, width, dashed });
+        self.lines.push(Line { layer: self.layer, a, b, color, width, dashed });
     }
 }
 
@@ -223,7 +228,8 @@ pub fn render(painter: &egui::Painter, cam: &Cam, scene: &Scene3, light: &Light)
             painter.line_segment([a.0, b.0], Stroke::new(l.width, l.color));
         }
     }
-    let mut items: Vec<(f32, Item)> = Vec::with_capacity(scene.tris.len() + scene.lines.len());
+    // (strat, adâncime, element): straturile în ordine, în fiecare de la depărtare spre aproape
+    let mut items: Vec<(u8, f32, Item)> = Vec::with_capacity(scene.tris.len() + scene.lines.len());
     for t in &scene.tris {
         let pr: Vec<(Pos2, f32)> = t.v.iter().filter_map(|v| cam.project(v.p)).collect();
         if pr.len() != 3 {
@@ -241,22 +247,22 @@ pub fn render(painter: &egui::Painter, cam: &Cam, scene: &Scene3, light: &Light)
             to_color(light.shade(v.c, n), t.alpha)
         });
         let depth = (pr[0].1 + pr[1].1 + pr[2].1) / 3.0;
-        items.push((depth, Item::Tri([a, b, c], cols)));
+        items.push((t.layer, depth, Item::Tri([a, b, c], cols)));
     }
     for l in &scene.lines {
         if let (Some(a), Some(b)) = (cam.project(l.a), cam.project(l.b)) {
             // liniile câștigă la egalitate cu fața pe care stau
-            items.push(((a.1 + b.1) / 2.0 - 1e-3, Item::Line(a.0, b.0, l.color, l.width, l.dashed)));
+            items.push((l.layer, (a.1 + b.1) / 2.0 - 1e-3, Item::Line(a.0, b.0, l.color, l.width, l.dashed)));
         }
     }
-    items.sort_by(|a, b| b.0.total_cmp(&a.0));
+    items.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.total_cmp(&a.1)));
     let mut mesh = Mesh::default();
     let flush = |mesh: &mut Mesh| {
         if !mesh.is_empty() {
             painter.add(Shape::mesh(std::mem::take(mesh)));
         }
     };
-    for (_, it) in items {
+    for (_, _, it) in items {
         match it {
             Item::Tri(p, c) => {
                 let base = mesh.vertices.len() as u32;
