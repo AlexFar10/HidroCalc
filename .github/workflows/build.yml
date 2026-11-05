@@ -1,4 +1,4 @@
-# Construiește aplicația pentru macOS (.dmg, universal: Apple Silicon + Intel) și
+# Construiește aplicația pentru macOS (.dmg, Apple Silicon) și
 # Windows (.zip cu HidroCalc.exe).
 #
 # - pornire manuală: tab-ul Actions → „Build” → „Run workflow” (fișierele apar la Artifacts);
@@ -31,20 +31,18 @@ jobs:
       - run: cargo test -p hidro-core
 
   macos:
-    name: macOS (universal)
+    name: macOS (Apple Silicon)
     needs: test
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          targets: aarch64-apple-darwin
       - uses: Swatinem/rust-cache@v2
 
-      - name: Build (arm64 + x86_64)
-        run: |
-          cargo build --release -p hidrocalc --target aarch64-apple-darwin
-          cargo build --release -p hidrocalc --target x86_64-apple-darwin
+      - name: Build (arm64)
+        run: cargo build --release -p hidrocalc --target aarch64-apple-darwin
 
       - name: Pachet .app + .dmg
         run: |
@@ -52,9 +50,7 @@ jobs:
           [[ "$GITHUB_REF_TYPE" == "tag" ]] || VERSION="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
           APP=dist/HidroCalc.app
           mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-          lipo -create -output "$APP/Contents/MacOS/HidroCalc" \
-            target/aarch64-apple-darwin/release/hidrocalc \
-            target/x86_64-apple-darwin/release/hidrocalc
+          cp target/aarch64-apple-darwin/release/hidrocalc "$APP/Contents/MacOS/HidroCalc"
           cp assets/icons/icon.icns "$APP/Contents/Resources/HidroCalc.icns"
           cat > "$APP/Contents/Info.plist" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
@@ -70,6 +66,7 @@ jobs:
             <key>CFBundleShortVersionString</key><string>${VERSION}</string>
             <key>CFBundleVersion</key><string>${VERSION}</string>
             <key>LSMinimumSystemVersion</key><string>11.0</string>
+            <key>LSArchitecturePriority</key><array><string>arm64</string></array>
             <key>NSHighResolutionCapable</key><true/>
           </dict>
           </plist>
@@ -77,8 +74,8 @@ jobs:
           # semnătură ad-hoc (fără certificat) — necesară pe Apple Silicon
           codesign --force --deep --sign - "$APP"
           ln -s /Applications dist/Applications
-          hdiutil create -volname HidroCalc -srcfolder dist -ov -format UDZO "HidroCalc-${VERSION}-macos.dmg"
-          echo "ARTIFACT=HidroCalc-${VERSION}-macos.dmg" >> "$GITHUB_ENV"
+          hdiutil create -volname HidroCalc -srcfolder dist -ov -format UDZO "HidroCalc-${VERSION}-macos-apple-silicon.dmg"
+          echo "ARTIFACT=HidroCalc-${VERSION}-macos-apple-silicon.dmg" >> "$GITHUB_ENV"
 
       - uses: actions/upload-artifact@v7
         with:

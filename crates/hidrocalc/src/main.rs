@@ -7,6 +7,7 @@ mod charts;
 mod db;
 mod i18n;
 mod map_ui;
+mod mesh3d;
 mod network_ui;
 mod steps;
 mod terrain_sync;

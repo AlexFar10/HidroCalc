@@ -83,20 +83,6 @@ impl Camera {
     }
 }
 
-fn parse_color(s: Option<&str>) -> Option<Color32> {
-    let h = s?.strip_prefix('#')?;
-    let v = u32::from_str_radix(h, 16).ok().filter(|_| h.len() == 6)?;
-    Some(Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8))
-}
-
-/// Culoarea terenului după cotă (verde jos → maro sus).
-fn terrain_color(t: f32, shade: f32) -> Color32 {
-    let lo = [120.0, 170.0, 100.0];
-    let hi = [176.0, 150.0, 110.0];
-    let c: Vec<u8> = (0..3).map(|i| ((lo[i] + (hi[i] - lo[i]) * t) * shade).clamp(0.0, 255.0) as u8).collect();
-    Color32::from_rgba_unmultiplied(c[0], c[1], c[2], 150)
-}
-
 impl View3D {
     fn terrain_grid(p: &ProjectData) -> Option<TerrainGrid> {
         p.network_canvas_settings.get("terrainGrid").and_then(|v| serde_json::from_value(v.clone()).ok())
@@ -210,13 +196,13 @@ impl View3D {
         let (rect, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::click_and_drag());
         self.interact(ui, &resp, &scene);
         let painter = ui.painter_at(rect);
-        painter.rect_filled(rect, 10.0, Color32::from_rgb(0xEE, 0xF2, 0xF6));
         if p.network_schema.is_empty() {
+            painter.rect_filled(rect, 10.0, Color32::from_rgb(0xEE, 0xF2, 0xF6));
             painter.text(rect.center(), Align2::CENTER_CENTER, t.t("view3d.empty"), FontId::proportional(14.0), pl.muted);
             return;
         }
         let cam = self.camera(&scene, rect);
-        self.draw(&painter, &cam, &scene, rect);
+        self.draw(&painter, &cam, &scene, rect, ui.visuals().dark_mode);
 
         // Starea terenului
         ui.horizontal_wrapped(|ui| {
@@ -273,112 +259,145 @@ impl View3D {
         let fwd = norm(sub(target, eye));
         let right = norm(cross(fwd, [0.0, 1.0, 0.0]));
         let up = cross(right, fwd);
-        let focal = rect.height() / 2.0 / (25f32.to_radians()).tan();
+        let focal = rect.height() / 2.0 / (22.5f32.to_radians()).tan();
         Camera { eye, right, up, fwd, focal, center: rect.center() }
     }
 
-    fn draw(&self, painter: &egui::Painter, cam: &Camera, scene: &Scene, rect: Rect) {
-        // Teren: triunghiuri sortate de la depărtare spre aproape, semitransparente
+    fn draw(&self, painter: &egui::Painter, cam: &Camera, scene: &Scene, rect: Rect, dark: bool) {
+        use crate::mesh3d::{self as m3, lerp, rgb, Scene3, Vert};
+        // Fundal în degrade (cer)
+        let (top, bottom) = if dark { (Color32::from_rgb(0x0B, 0x12, 0x20), Color32::from_rgb(0x1A, 0x24, 0x36)) } else { (Color32::from_rgb(0xDC, 0xE6, 0xF2), Color32::from_rgb(0xF4, 0xF6, 0xFA)) };
+        let mut bg = Mesh::default();
+        for (p, c) in [(rect.left_top(), top), (rect.right_top(), top), (rect.right_bottom(), bottom), (rect.left_bottom(), bottom)] {
+            bg.colored_vertex(p, c);
+        }
+        bg.add_triangle(0, 1, 2);
+        bg.add_triangle(0, 2, 3);
+        painter.add(Shape::mesh(bg));
+
+        let span = scene.span as f32;
+        let symbol_h = span * 0.035;
+        let pipe_r = |de: f64| span * 0.0025 * ((de.max(63.0) / 110.0) as f32).sqrt();
+        let mut s3 = Scene3::default();
+
+        // Grila de bază (gridHelper)
+        let gy = 0.0;
+        let half = span * 0.8;
+        let (gc, gc2) = if dark { (Color32::from_rgb(0x33, 0x41, 0x55), Color32::from_rgb(0x1E, 0x29, 0x3B)) } else { (Color32::from_rgb(0x94, 0xA3, 0xB8), Color32::from_rgb(0xCB, 0xD5, 0xE1)) };
+        for i in 0..=32 {
+            let t = -half + span * 1.6 * i as f32 / 32.0;
+            let c = if i == 16 { gc } else { gc2 };
+            for (a, b) in [([t, gy, -half], [t, gy, half]), ([-half, gy, t], [half, gy, t])] {
+                s3.underlay.push(m3::Line { a, b, color: c, width: 1.0, dashed: false });
+            }
+        }
+
+        // Teren: culori hipsometrice (verde → galben → maro), normale netede, semitransparent
         if let Some(tr) = &scene.terrain {
-            let light = norm([0.4, 1.0, 0.3]);
+            let (low, mid, high) = (rgb(0x4D7C0F), rgb(0xCA8A04), rgb(0x7C2D12));
             let range = (tr.max_h - tr.min_h).max(0.01) as f32;
-            let mut tris: Vec<(f32, [Pos2; 3], Color32)> = Vec::new();
+            let pos: Vec<[f32; 3]> = tr.positions.iter().map(|v| f3(*v)).collect();
+            let idx = |i: usize, j: usize| j * tr.nx + i;
+            let mut normals = vec![[0.0f32; 3]; pos.len()];
+            let mut tris = Vec::new();
             for j in 0..tr.ny - 1 {
                 for i in 0..tr.nx - 1 {
-                    let k = |a: usize, b: usize| b * tr.nx + a;
-                    for idx in [[k(i, j), k(i + 1, j), k(i + 1, j + 1)], [k(i, j), k(i + 1, j + 1), k(i, j + 1)]] {
-                        let v: Vec<[f32; 3]> = idx.iter().map(|&n| f3(tr.positions[n])).collect();
-                        let n = norm(cross(sub(v[1], v[0]), sub(v[2], v[0])));
-                        let shade = 0.6 + 0.4 * dot(if n[1] < 0.0 { [-n[0], -n[1], -n[2]] } else { n }, light).abs();
-                        let h = idx.iter().map(|&n| tr.heights[n]).sum::<f64>() / 3.0;
-                        let col = terrain_color(((h - tr.min_h) as f32 / range).clamp(0.0, 1.0), shade);
-                        let pr: Vec<(Pos2, f32)> = v.iter().filter_map(|p| cam.project(*p)).collect();
-                        if pr.len() == 3 {
-                            tris.push(((pr[0].1 + pr[1].1 + pr[2].1) / 3.0, [pr[0].0, pr[1].0, pr[2].0], col));
+                    let (a, b, c, d) = (idx(i, j), idx(i + 1, j), idx(i, j + 1), idx(i + 1, j + 1));
+                    for t in [[a, c, b], [b, c, d]] {
+                        let n = m3::cross(m3::sub(pos[t[1]], pos[t[0]]), m3::sub(pos[t[2]], pos[t[0]]));
+                        for k in t {
+                            normals[k] = m3::add(normals[k], n);
                         }
+                        tris.push(t);
                     }
                 }
             }
-            tris.sort_by(|a, b| b.0.total_cmp(&a.0));
-            let mut mesh = Mesh::default();
-            for (_, pts, col) in tris {
-                let base = mesh.vertices.len() as u32;
-                for p in pts {
-                    mesh.colored_vertex(p, col);
-                }
-                mesh.add_triangle(base, base + 1, base + 2);
+            let color = |k: usize| {
+                let f = ((tr.heights[k] - tr.min_h) as f32 / range).clamp(0.0, 1.0);
+                if f < 0.5 { lerp(low, mid, f * 2.0) } else { lerp(mid, high, (f - 0.5) * 2.0) }
+            };
+            for t in tris {
+                let v = t.map(|k| Vert { p: pos[k], n: m3::norm(normals[k]), c: color(k) });
+                s3.tris.push(m3::Tri { v, alpha: 0.55, double_sided: true });
             }
-            painter.add(Shape::mesh(mesh));
         }
 
-        // Verticale punctate teren → conductă la capete
+        // Conducte: tuburi împărțite în bucăți (sortare corectă față de teren)
         for p in &scene.pipes {
-            for (g, a) in [(p.ground_start, p.start), (p.ground_end, p.end)] {
-                if let (Some(g), Some(a)) = (cam.project(f3(g)), cam.project(f3(a))) {
-                    painter.add(Shape::dashed_line(&[g.0, a.0], Stroke::new(1.0, Color32::from_gray(120)), 4.0, 3.0));
-                }
+            let (a, b) = (f3(p.start), f3(p.end));
+            let col = p.color.as_deref().and_then(|c| u32::from_str_radix(c.trim_start_matches('#'), 16).ok()).filter(|c| *c != 0x1A1A1A).map(rgb).unwrap_or(rgb(0x2563EB));
+            let len = m3::dot(m3::sub(b, a), m3::sub(b, a)).sqrt();
+            let n = ((len / (span / 40.0)).ceil() as usize).clamp(1, 40);
+            for k in 0..n {
+                let (t0, t1) = (k as f32 / n as f32, (k + 1) as f32 / n as f32);
+                s3.cylinder(lerp(a, b, t0), lerp(a, b, t1), pipe_r(p.d_ext), pipe_r(p.d_ext), 10, col, 1.0, k == 0 || k == n - 1);
             }
+            // urma pe teren (punctat) și verticalele de la capete
+            s3.line(f3(p.ground_start), f3(p.ground_end), Color32::from_rgb(0xA1, 0x62, 0x07), 1.5, true);
+            s3.line(f3(p.ground_start), a, Color32::from_rgb(0x78, 0x71, 0x6C), 1.0, false);
+            s3.line(f3(p.ground_end), b, Color32::from_rgb(0x78, 0x71, 0x6C), 1.0, false);
         }
-        // Conducte (grosime după De, limitată pe ecran)
-        let mut pipes: Vec<(f32, &scene3d::Pipe)> =
-            scene.pipes.iter().filter_map(|p| cam.project(f3([(p.start[0] + p.end[0]) / 2.0, (p.start[1] + p.end[1]) / 2.0, (p.start[2] + p.end[2]) / 2.0])).map(|(_, z)| (z, p))).collect();
-        pipes.sort_by(|a, b| b.0.total_cmp(&a.0));
-        for (z, p) in &pipes {
-            let (Some(a), Some(b)) = (cam.project(f3(p.start)), cam.project(f3(p.end))) else { continue };
-            let d = if p.d_ext > 0.0 { p.d_ext / 1000.0 } else { 0.11 } as f32;
-            let width = (d * cam.focal / z * 6.0).clamp(2.0, 12.0);
-            let col = parse_color(p.color.as_deref()).filter(|c| *c != Color32::from_rgb(0x1a, 0x1a, 0x1a)).unwrap_or(Color32::from_rgb(0x25, 0x63, 0xEB));
-            painter.line_segment([a.0, b.0], Stroke::new(width, col));
-            if self.labels {
-                let m = a.0 + (b.0 - a.0) / 2.0;
-                let txt = if p.d_ext > 0.0 { format!("{} · De {} · {:.1} m", p.label, p.d_ext, p.length_m) } else { format!("{} · {:.1} m", p.label, p.length_m) };
-                label(painter, m + Vec2::new(0.0, -12.0), &txt, Color32::from_black_alpha(185), Color32::WHITE);
-            }
-        }
-        // Noduri
+
+        // Noduri (modelele procedurale din aplicația React)
+        let h = symbol_h;
         for n in &scene.nodes {
-            let (Some(g), Some(inv)) = (cam.project(f3(n.ground)), cam.project(f3(n.invert))) else { continue };
-            let (col, h_px) = match n.kind {
-                SchemaKind::Rezervor => (Color32::from_rgb(0xDC, 0x26, 0x26), 26.0),
-                SchemaKind::Sursa => (Color32::from_rgb(0x33, 0x41, 0x55), 22.0),
-                SchemaKind::Hidrant => (Color32::from_rgb(0xDC, 0x26, 0x26), 18.0),
-                SchemaKind::Subsistem => (Color32::from_rgb(0x0D, 0x94, 0x88), 16.0),
-                _ => (Color32::from_rgb(0x1D, 0x4E, 0xD8), 8.0),
-            };
-            painter.line_segment([inv.0, g.0], Stroke::new(2.0, col.gamma_multiply(0.7)));
+            let g = f3(n.ground);
+            let up = |dy: f32| [g[0], g[1] + dy, g[2]];
             match n.kind {
-                SchemaKind::Rezervor | SchemaKind::Sursa | SchemaKind::Subsistem => {
-                    let r = Rect::from_min_max(g.0 + Vec2::new(-h_px * 0.7, -h_px), g.0 + Vec2::new(h_px * 0.7, 0.0));
-                    painter.rect(r, 2.0, col.gamma_multiply(0.85), Stroke::new(1.0, Color32::WHITE), egui::StrokeKind::Middle);
-                }
                 SchemaKind::Hidrant => {
-                    painter.line_segment([g.0, g.0 + Vec2::new(0.0, -h_px)], Stroke::new(5.0, col));
-                    painter.circle_filled(g.0 + Vec2::new(0.0, -h_px), 4.0, col);
+                    s3.cylinder(g, up(h * 0.8), h * 0.15, h * 0.12, 10, rgb(0xDC2626), 1.0, true);
+                    s3.sphere(up(h * 0.82), h * 0.14, rgb(0xB91C1C));
+                    s3.cylinder([g[0] - h * 0.21, g[1] + h * 0.55, g[2]], [g[0] + h * 0.21, g[1] + h * 0.55, g[2]], h * 0.05, h * 0.05, 6, rgb(0x991B1B), 1.0, true);
                 }
-                _ => {
-                    painter.circle(g.0, h_px, Color32::WHITE, Stroke::new(2.0, col));
+                SchemaKind::Rezervor => {
+                    s3.cylinder(g, up(h * 0.8), h * 0.7, h * 0.7, 16, rgb(0x94A3B8), 1.0, true);
+                    s3.cylinder(up(h * 0.8), up(h), h * 0.74, 0.0, 16, rgb(0x64748B), 1.0, false);
                 }
+                SchemaKind::Sursa => s3.bx(g, h * 0.9, h * 0.7, h * 0.9, rgb(0x0D9488), 1.0),
+                SchemaKind::CaminGrav | SchemaKind::CaminAer => {
+                    let c = if n.kind == SchemaKind::CaminGrav { rgb(0x1D4ED8) } else { rgb(0x3B82F6) };
+                    s3.cylinder(up(-h * 0.5), g, h * 0.3, h * 0.3, 10, c, 1.0, true);
+                }
+                SchemaKind::Subsistem => s3.bx(g, h * 1.6, h * 0.3, h, rgb(0x14B8A6), 0.6),
+                _ => {}
             }
-            if self.labels && !n.label.is_empty() {
-                label(painter, g.0 + Vec2::new(0.0, -h_px - 12.0), &n.label, Color32::from_white_alpha(220), Color32::from_rgb(0x1E, 0x29, 0x3B));
-            }
+            s3.line(f3(n.invert), g, Color32::from_rgb(0x78, 0x71, 0x6C), 1.0, false);
         }
-        // Puncte topo
         for tp in &scene.topo {
-            if let Some((s, _)) = cam.project(f3(*tp)) {
-                let st = Stroke::new(1.5, Color32::from_rgb(0x15, 0x80, 0x3D));
-                painter.line_segment([s + Vec2::new(-4.0, -4.0), s + Vec2::new(4.0, 4.0)], st);
-                painter.line_segment([s + Vec2::new(-4.0, 4.0), s + Vec2::new(4.0, -4.0)], st);
+            s3.sphere(f3(*tp), h * 0.12, rgb(0x16A34A));
+        }
+
+        let mcam = m3::Cam { eye: cam.eye, right: cam.right, up: cam.up, fwd: cam.fwd, focal: cam.focal, center: cam.center, near: span / 2000.0 };
+        m3::render(painter, &mcam, &s3, &m3::Light::standard());
+
+        // Etichete (deasupra scenei, ca elementele Html din React)
+        if self.labels {
+            for p in &scene.pipes {
+                let m = [(p.ground_start[0] + p.ground_end[0]) / 2.0, (p.ground_start[1] + p.ground_end[1]) / 2.0, (p.ground_start[2] + p.ground_end[2]) / 2.0];
+                if let Some((s, _)) = cam.project(f3(m)) {
+                    let txt = if p.d_ext > 0.0 { format!("{} · De {} · {:.1} m", p.label, p.d_ext, p.length_m) } else { format!("{} · {:.1} m", p.label, p.length_m) };
+                    label(painter, s, &txt, Color32::from_black_alpha(178), Color32::WHITE);
+                }
+            }
+            for n in scene.nodes.iter().filter(|n| !n.label.is_empty()) {
+                let g = f3(n.ground);
+                if let Some((s, _)) = cam.project([g[0], g[1] + h * 1.25, g[2]]) {
+                    label(painter, s, &n.label, Color32::from_white_alpha(217), Color32::from_rgb(0x1E, 0x29, 0x3B));
+                }
             }
         }
-        // Indicator de nord (axa −Z = nord pe plan)
-        let o = rect.left_bottom() + Vec2::new(40.0, -40.0);
-        let dir = |v: [f32; 3]| Vec2::new(dot(v, cam.right), -dot(v, cam.up)) * 24.0;
-        painter.circle_filled(o, 30.0, Color32::from_white_alpha(170));
-        for (v, c, txt) in [([0.0, 0.0, -1.0], Color32::from_rgb(0xDC, 0x26, 0x26), "N"), ([1.0, 0.0, 0.0], Color32::from_gray(90), "E"), ([0.0, 1.0, 0.0], Color32::from_gray(90), "↑")] {
+
+        // Gizmo (axele X/Y/Z, ca GizmoViewport)
+        let o = rect.right_bottom() + Vec2::new(-48.0, -48.0);
+        painter.circle_filled(o, 36.0, if dark { Color32::from_black_alpha(90) } else { Color32::from_white_alpha(150) });
+        let dir = |v: [f32; 3]| Vec2::new(dot(v, cam.right), -dot(v, cam.up)) * 26.0;
+        let mut axes = [([1.0, 0.0, 0.0], Color32::from_rgb(0xEF, 0x44, 0x44), "E"), ([0.0, 1.0, 0.0], Color32::from_rgb(0x22, 0xC5, 0x5E), "↑"), ([0.0, 0.0, -1.0], Color32::from_rgb(0x3B, 0x82, 0xF6), "N")];
+        axes.sort_by(|a, b| dot(a.0, cam.fwd).total_cmp(&dot(b.0, cam.fwd)).reverse());
+        for (v, c, txt) in axes {
             let e = o + dir(v);
-            painter.line_segment([o, e], Stroke::new(2.0, c));
-            painter.text(e + (e - o).normalized() * 8.0, Align2::CENTER_CENTER, txt, FontId::proportional(11.0), c);
+            painter.line_segment([o, e], Stroke::new(2.5, c));
+            painter.circle_filled(e, 8.0, c);
+            painter.text(e, Align2::CENTER_CENTER, txt, FontId::proportional(10.0), Color32::WHITE);
         }
     }
 }

@@ -28,7 +28,7 @@ cargo build --release -p hidrocalc
 
 Workflow-ul `.github/workflows/build.yml` construiește:
 
-- **macOS** — `HidroCalc-<versiune>-macos.dmg` (aplicație universală Apple Silicon + Intel);
+- **macOS** — `HidroCalc-<versiune>-macos-apple-silicon.dmg` (doar Apple Silicon: M1 și mai noi);
 - **Windows** — `HidroCalc-<versiune>-windows-x64.zip` (`HidroCalc.exe`, cu iconiță).
 
 Pornire: GitHub → **Actions** → **Build** → **Run workflow** (fișierele apar la *Artifacts*), sau un tag:
