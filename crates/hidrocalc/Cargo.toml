@@ -1,0 +1,25 @@
+[package]
+name = "hidrocalc"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
+directories = "6.0.0"
+eframe = { version = "0.37.0", features = ["persistence"] }
+egui = { version = "0.37.0", features = ["monochrome_emoji_fonts"] }
+egui_extras = "0.37.0"
+hidro-core = { version = "0.1.0", path = "../hidro-core" }
+image = { version = "0.25.10", default-features = false, features = ["png"] }
+log = "0.4.35"
+rfd = "0.17.2"
+rusqlite = { version = "0.41.1", features = ["bundled"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+ureq = "2"
+uuid = { version = "1.29.0", features = ["v4"] }
+
+[dev-dependencies]
+egui_kittest = { version = "0.37.0", features = ["wgpu", "snapshot", "eframe"] }
