@@ -12,6 +12,23 @@ use hidro_core::model::ProjectData;
 use hidro_core::pipeline::{self, ProjectResults};
 use std::time::{Duration, Instant};
 
+/// Scurtături globale de tastatură (⌘ pe macOS, Ctrl în rest).
+const SC_SIDEBAR: egui::KeyboardShortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::B);
+const SC_PREV: egui::KeyboardShortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::OpenBracket);
+const SC_NEXT: egui::KeyboardShortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::CloseBracket);
+const SC_HELP: egui::KeyboardShortcut = egui::KeyboardShortcut::new(egui::Modifiers::NONE, egui::Key::F1);
+const NUM_KEYS: [egui::Key; 9] = [
+    egui::Key::Num1,
+    egui::Key::Num2,
+    egui::Key::Num3,
+    egui::Key::Num4,
+    egui::Key::Num5,
+    egui::Key::Num6,
+    egui::Key::Num7,
+    egui::Key::Num8,
+    egui::Key::Num9,
+];
+
 /// Acțiuni din panoul de proiect al barei laterale, executate după desenare.
 enum Act {
     Home,
@@ -74,6 +91,7 @@ pub struct HidroApp {
     net_ui: NetworkUi,
     terrain: crate::terrain_sync::TerrainSync,
     export_job: Option<ExportJob>,
+    show_help: bool,
     logo: Option<egui::TextureHandle>,
 }
 
@@ -115,6 +133,7 @@ impl HidroApp {
             net_ui: NetworkUi::default(),
             terrain: Default::default(),
             export_job: None,
+            show_help: false,
             logo: None,
         };
         app.reload_list();
@@ -257,7 +276,12 @@ impl HidroApp {
     fn set_settings(&mut self, ctx: &egui::Context, s: Settings) {
         self.t.lang = s.lang;
         self.settings = s;
-        ctx.set_theme(if self.settings.dark { egui::Theme::Dark } else { egui::Theme::Light });
+        let theme = if self.settings.dark { egui::Theme::Dark } else { egui::Theme::Light };
+        if ctx.theme() != theme {
+            ctx.set_theme(theme);
+            // Refă cadrul cu tema nouă, ca nimic din el să nu rămână în culorile vechi.
+            ctx.request_discard("tema schimbată");
+        }
     }
 
     // ───────────────────────────── UI ─────────────────────────────
@@ -294,8 +318,8 @@ impl HidroApp {
                 ui.spacing_mut().button_padding = egui::vec2(10.0, 5.0);
                 ui.spacing_mut().interact_size.y = 28.0;
                 if has_project {
-                    let tip = self.t.t(if closed { "nav.showSidebar" } else { "nav.hideSidebar" });
-                    if widgets::icon_button(ui, &tip, |p, r, col| {
+                    let tip = format!("{} ({})", self.t.t(if closed { "nav.showSidebar" } else { "nav.hideSidebar" }), ui.ctx().format_shortcut(&SC_SIDEBAR));
+                    if widgets::icon_button(ui, &tip, |p, r, col, _bg| {
                         let body = r.shrink2(egui::vec2(9.0, 8.0));
                         p.rect_stroke(body, 2.0, Stroke::new(1.4, col), egui::StrokeKind::Middle);
                         let split = body.left() + body.width() * 0.38;
@@ -328,7 +352,7 @@ impl HidroApp {
                         })
                         .inner
                     };
-                    if arrow(ui, "←", self.t.t("common.back").trim_start_matches("← ").to_string(), step > 1) {
+                    if arrow(ui, "←", format!("{} ({})", self.t.t("common.back").trim_start_matches("← "), ui.ctx().format_shortcut(&SC_PREV)), step > 1) {
                         go = Some(step - 1);
                     }
                     ui.add_space(6.0);
@@ -351,15 +375,15 @@ impl HidroApp {
                             });
                         });
                     ui.add_space(6.0);
-                    if arrow(ui, "→", self.t.t("nav.stepNext").trim_end_matches(" →").to_string(), step < 9) {
+                    if arrow(ui, "→", format!("{} ({})", self.t.t("nav.stepNext").trim_end_matches(" →"), ui.ctx().format_shortcut(&SC_NEXT)), step < 9) {
                         go = Some(step + 1);
                     }
                 }
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if !has_project {
-                        let icon = if s.dark { "☀" } else { "🌙" };
                         let tip = if s.dark { self.t.t("nav.switchToLight") } else { self.t.t("nav.switchToDark") };
-                        if ui.add(egui::Button::new(RichText::new(icon).color(p.ink2)).fill(p.panel2).stroke(Stroke::NONE)).on_hover_text(tip).clicked() {
+                        let dark = s.dark;
+                        if widgets::icon_button(ui, &tip, |pt, r, col, bg| widgets::paint_theme_icon(pt, r, col, bg, dark)).clicked() {
                             s.dark = !s.dark;
                         }
                         let sel = if s.lang == Lang::Ro { 0 } else { 1 };
@@ -400,6 +424,110 @@ impl HidroApp {
         r
     }
 
+    /// Scurtături globale: pași, bara laterală, ajutor. Se consumă înainte de desenare.
+    fn handle_shortcuts(&mut self, ctx: &egui::Context) {
+        if ctx.input_mut(|i| i.consume_shortcut(&SC_HELP)) {
+            self.show_help = !self.show_help;
+        }
+        if self.project.is_none() {
+            return;
+        }
+        if ctx.input_mut(|i| i.consume_shortcut(&SC_SIDEBAR)) {
+            let mut s = self.settings.clone();
+            s.sidebar_closed = !s.sidebar_closed;
+            self.set_settings(ctx, s);
+        }
+        let mut go: Option<u32> = None;
+        let step = self.project.as_ref().map_or(1, |p| p.current_step);
+        if ctx.input_mut(|i| i.consume_shortcut(&SC_PREV)) && step > 1 {
+            go = Some(step - 1);
+        }
+        if ctx.input_mut(|i| i.consume_shortcut(&SC_NEXT)) && step < 9 {
+            go = Some(step + 1);
+        }
+        for (n, key) in NUM_KEYS.iter().enumerate() {
+            if ctx.input_mut(|i| i.consume_shortcut(&egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, *key))) {
+                go = Some(n as u32 + 1);
+            }
+        }
+        if let (Some(g), Some(p)) = (go, &mut self.project) {
+            p.current_step = g;
+        }
+    }
+
+    /// Contur de focus pentru elementul activ de la tastatură (butoane, bife, liste, desenul).
+    /// Se desenează deasupra, deci apare și la widgeturile cu stil propriu.
+    fn paint_focus_ring(&self, ctx: &egui::Context) {
+        let Some(id) = ctx.memory(|m| m.focused()) else { return };
+        let Some(r) = ctx.read_response(id) else { return };
+        if !r.has_focus() || !r.rect.is_positive() {
+            return;
+        }
+        let p = theme::palette(ctx);
+        ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::NULL.with("focus_ring")))
+            .rect_stroke(r.rect.expand(2.0), CornerRadius::same(8), Stroke::new(2.0, p.accent), egui::StrokeKind::Outside);
+    }
+
+    /// Fereastra cu scurtăturile de tastatură (F1 sau butonul „?” din bara laterală).
+    fn help_window(&mut self, ctx: &egui::Context) {
+        if !self.show_help {
+            return;
+        }
+        let p = theme::palette(ctx);
+        let t = &self.t;
+        let sc = |s: &egui::KeyboardShortcut| ctx.format_shortcut(s);
+        let cmd = |k: &str| format!("{}+{k}", ctx.format_modifiers(egui::Modifiers::COMMAND));
+        let rows: Vec<(&str, Vec<(String, String)>)> = vec![
+            (
+                "help.general",
+                vec![
+                    ("Tab / Shift+Tab".into(), t.t("help.tab")),
+                    ("Enter / Space".into(), t.t("help.activate")),
+                    (format!("{} / {}", sc(&SC_PREV), sc(&SC_NEXT)), format!("{} / {}", t.t("help.prev"), t.t("help.next"))),
+                    (cmd("1…9"), t.t("help.jump")),
+                    (sc(&SC_SIDEBAR), t.t("help.sidebar")),
+                    (sc(&SC_HELP), t.t("help.help")),
+                ],
+            ),
+            (
+                "help.plan",
+                vec![
+                    ("← ↑ → ↓".into(), t.t("help.planPan")),
+                    ("+ / −".into(), t.t("help.planZoom")),
+                    ("Delete".into(), t.t("help.planDel")),
+                    (cmd("Z"), t.t("help.planUndo")),
+                    ("Esc".into(), t.t("help.planEsc")),
+                ],
+            ),
+            (
+                "help.view3d",
+                vec![
+                    ("← ↑ → ↓".into(), t.t("help.rotate")),
+                    ("Shift + ← ↑ → ↓".into(), t.t("help.pan3d")),
+                    ("+ / −".into(), t.t("help.zoom3d")),
+                    ("Home".into(), t.t("help.reset3d")),
+                ],
+            ),
+        ];
+        let mut open = true;
+        egui::Window::new(t.t("help.title")).open(&mut open).collapsible(false).resizable(false).default_width(440.0).show(ctx, |ui| {
+            for (title, items) in &rows {
+                ui.add_space(4.0);
+                widgets::section_title(ui, &t.t(title));
+                egui::Grid::new(*title).num_columns(2).spacing([16.0, 6.0]).show(ui, |ui| {
+                    for (keys, desc) in items {
+                        ui.label(RichText::new(keys).monospace().size(12.5).color(p.ink));
+                        ui.add(egui::Label::new(RichText::new(desc).size(13.0).color(p.ink2)).wrap());
+                        ui.end_row();
+                    }
+                });
+            }
+            ui.add_space(8.0);
+            ui.add(egui::Label::new(RichText::new(t.t("help.focusHint")).size(12.0).color(p.muted)).wrap());
+        });
+        self.show_help = open;
+    }
+
     /// Limba și tema, fixate jos în bara laterală.
     fn sidebar_settings(&mut self, ui: &mut egui::Ui) {
         let p = pal(ui);
@@ -411,8 +539,17 @@ impl HidroApp {
                     s.lang = if i == 0 { Lang::Ro } else { Lang::En };
                 }
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    let (icon, tip) = if s.dark { ("☀", self.t.t("nav.switchToLight")) } else { ("🌙", self.t.t("nav.switchToDark")) };
-                    if ui.add(egui::Button::new(RichText::new(icon).color(p.ink2)).fill(p.panel2).stroke(Stroke::NONE)).on_hover_text(tip).clicked() {
+                    let tip = if s.dark { self.t.t("nav.switchToLight") } else { self.t.t("nav.switchToDark") };
+                    let help_tip = format!("{} ({})", self.t.t("help.title"), ui.ctx().format_shortcut(&SC_HELP));
+                    if widgets::icon_button(ui, &help_tip, |p, r, col, _bg| {
+                        p.text(r.center(), egui::Align2::CENTER_CENTER, "?", egui::FontId::proportional(15.0), col);
+                    })
+                    .clicked()
+                    {
+                        self.show_help = !self.show_help;
+                    }
+                    let dark = s.dark;
+                    if widgets::icon_button(ui, &tip, |pt, r, col, bg| widgets::paint_theme_icon(pt, r, col, bg, dark)).clicked() {
                         s.dark = !s.dark;
                     }
                 });
@@ -841,6 +978,8 @@ impl HidroApp {
 
 impl eframe::App for HidroApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx0 = ui.ctx().clone();
+        self.handle_shortcuts(&ctx0);
         let label = self.t.t("common.formulas");
         ui.ctx().data_mut(|d| {
             d.insert_temp(egui::Id::NULL.with("formulas_label"), label);
@@ -871,6 +1010,8 @@ impl eframe::App for HidroApp {
         self.drive_export(ui.ctx());
         self.net_ui.export_busy = self.export_job.is_some();
         let ctx = ui.ctx().clone();
+        self.help_window(&ctx);
+        self.paint_focus_ring(&ctx);
         self.toasts_ui(&ctx);
 
         // Salvare cu debounce (ca `saveProject()` din store-ul React).
@@ -1131,6 +1272,119 @@ mod snapshots {
         h.state_mut().settings.sidebar_closed = true;
         h.run_steps(3);
         h.render().unwrap().save(out.join("step9-empty-collapsed.png")).unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Scurtături și navigare cu tastatura: pași, bara laterală, ajutor, butoane desenate manual, vederea 3D.
+    #[test]
+    fn keyboard_navigation_works() {
+        use egui_kittest::kittest::Queryable;
+        let dir = std::env::temp_dir().join(format!("hidrocalc-kb-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("k.db");
+        let mut h = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1360.0, 900.0))
+            .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
+        sample(h.state_mut());
+        h.state_mut().project.as_mut().unwrap().current_step = 3;
+        h.run_steps(2);
+        let step = |h: &egui_kittest::Harness<'_, HidroApp>| h.state().project.as_ref().unwrap().current_step;
+
+        // Pași: Cmd+] / Cmd+[ și Cmd+număr
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::CloseBracket);
+        h.run_steps(2);
+        assert_eq!(step(&h), 4);
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::OpenBracket);
+        h.run_steps(2);
+        assert_eq!(step(&h), 3);
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Num8);
+        h.run_steps(2);
+        assert_eq!(step(&h), 8);
+
+        // Bara laterală și ajutor
+        assert!(!h.state().settings.sidebar_closed);
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::B);
+        h.run_steps(2);
+        assert!(h.state().settings.sidebar_closed);
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::B);
+        h.run_steps(2);
+        assert!(!h.state().settings.sidebar_closed);
+        h.key_press(egui::Key::F1);
+        h.run_steps(2);
+        assert!(h.state().show_help);
+
+        // Buton desenat manual (paleta): focus + Enter alege instrumentul
+        h.key_press(egui::Key::F1);
+        h.run_steps(2);
+        assert!(!h.state().show_help);
+        h.get_by_role_and_label(egui::accesskit::Role::Button, "Tronson").focus();
+        h.run_steps(1);
+        h.key_press(egui::Key::Enter);
+        h.run_steps(2);
+        assert_eq!(h.state().net_ui.canvas.tool, crate::canvas::Tool::Tronson);
+
+        // Vedere 3D: săgeată dreapta rotește
+        h.state_mut().net_ui.show_3d = true;
+        h.run_steps(3);
+        let before = h.state().net_ui.view3d.yaw_for_test();
+        let canvas_label = h.state().t.t("view3d.a11yLabel");
+        h.get_by_role_and_label(egui::accesskit::Role::Canvas, &canvas_label).focus();
+        h.run_steps(1);
+        h.key_press(egui::Key::ArrowRight);
+        h.run_steps(2);
+        assert_ne!(h.state().net_ui.view3d.yaw_for_test(), before, "săgeata trebuie să rotească vederea");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Cum arată focusul de la tastatură pe butoane (verificare vizuală).
+    #[test]
+    fn focus_ring_snapshot() {
+        use egui_kittest::kittest::Queryable;
+        let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/ui-snapshots");
+        std::fs::create_dir_all(&out).unwrap();
+        let dir = std::env::temp_dir().join(format!("hidrocalc-fr-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("f.db");
+        let mut h = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1360.0, 900.0))
+            .with_theme(egui::Theme::Light)
+            .wgpu()
+            .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
+        sample(h.state_mut());
+        h.state_mut().project.as_mut().unwrap().current_step = 8;
+        h.run_steps(3);
+        h.get_by_role_and_label(egui::accesskit::Role::Button, "Hidrant").focus();
+        h.run_steps(2);
+        h.render().unwrap().save(out.join("focus-tool-button.png")).unwrap();
+        h.get_by_label_contains("Acasă").focus();
+        h.run_steps(2);
+        h.render().unwrap().save(out.join("focus-std-button.png")).unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Comutatoarele de temă/limbă din bara laterală, în ambele teme și după comutare (verificare vizuală).
+    #[test]
+    fn theme_toggle_snapshot() {
+        use egui_kittest::kittest::Queryable;
+        let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/ui-snapshots");
+        std::fs::create_dir_all(&out).unwrap();
+        let dir = std::env::temp_dir().join(format!("hidrocalc-tt-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("t.db");
+        let mut h = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1360.0, 900.0))
+            .with_theme(egui::Theme::Light)
+            .wgpu()
+            .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
+        sample(h.state_mut());
+        h.state_mut().project.as_mut().unwrap().current_step = 3;
+        h.run_steps(3);
+        h.render().unwrap().save(out.join("toggle-1-light.png")).unwrap();
+        h.get_by_role_and_label(egui::accesskit::Role::Button, "Comută la dark mode").click();
+        h.run_steps(1);
+        h.render().unwrap().save(out.join("toggle-2-after-click.png")).unwrap();
+        h.run_steps(4);
+        h.render().unwrap().save(out.join("toggle-3-dark.png")).unwrap();
         let _ = std::fs::remove_dir_all(dir);
     }
 

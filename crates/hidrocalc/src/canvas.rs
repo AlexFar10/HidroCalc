@@ -613,6 +613,8 @@ impl CanvasUi {
         self.last_rect = rect;
         self.interact(ui, &resp, rect, p);
         self.paint(ui, rect, p, &resp);
+        w::focus_ring(ui, &resp, 10);
+        w::describe(&resp, egui::Role::Canvas, &t.t("canvas.a11yLabel"));
         crate::map_ui::info_bar(ui, t, p);
         self.properties(ui, t, p);
         // Ancora nouă se pune în punctul din centrul vederii curente.
@@ -771,6 +773,26 @@ impl CanvasUi {
             }
             if undo && !typing {
                 self.undo_once(p);
+            }
+        }
+        // Tastatura, cu focus pe desen: săgeți = deplasare, +/− = zoom (pentru accesibilitate).
+        if resp.has_focus() {
+            let (dx, dy, zin, zout) = ui.input(|i| {
+                let k = |key| i.key_pressed(key) as i32 as f32;
+                (
+                    k(egui::Key::ArrowLeft) - k(egui::Key::ArrowRight),
+                    k(egui::Key::ArrowUp) - k(egui::Key::ArrowDown),
+                    i.key_pressed(egui::Key::Plus) || i.key_pressed(egui::Key::Equals),
+                    i.key_pressed(egui::Key::Minus),
+                )
+            });
+            let step = if ui.input(|i| i.modifiers.shift) { 160.0 } else { 40.0 };
+            self.pan += Vec2::new(dx, dy) * step;
+            if zin || zout {
+                let center = rect.center();
+                let before = self.to_world(origin, center);
+                self.zoom = (self.zoom * if zin { 1.25 } else { 1.0 / 1.25 }).clamp(ZOOM_MIN, ZOOM_MAX);
+                self.pan = center - origin - before.to_vec2() * self.zoom;
             }
         }
 

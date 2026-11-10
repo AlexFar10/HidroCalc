@@ -276,6 +276,10 @@ impl View3D {
     }
 
     fn scene(p: &ProjectData) -> Scene {
+        Self::scene_with(p, setting_f64(p, "view3DExaggeration", 5.0))
+    }
+
+    fn scene_with(p: &ProjectData, exaggeration: f64) -> Scene {
         let topo: Vec<(f64, f64, f64)> = match map_ui::anchor(p) {
             Some(a) => map_ui::topo_points(p)
                 .iter()
@@ -293,7 +297,7 @@ impl View3D {
             sections: &p.network_sections,
             scale_ratio: crate::canvas::scale_ratio(p),
             pipe_depth: setting_f64(p, "pipeDepth", DEFAULT_PIPE_DEPTH),
-            exaggeration: setting_f64(p, "view3DExaggeration", 5.0),
+            exaggeration,
             reservoir_ground: p.reservoir.cota_teren,
             terrain: grid.as_ref(),
             topo: &topo,
@@ -319,6 +323,64 @@ impl View3D {
         });
     }
 
+    /// Exagerarea verticală „placută”: reliefului i se dă ~10% din întinderea scenei ca înălțime
+    /// vizuală (între 1× și 12×); fără teren sau relief, 5×.
+    fn pleasant_exaggeration(p: &ProjectData) -> f64 {
+        let flat = Self::scene_with(p, 1.0);
+        let mut lo = f64::MAX;
+        let mut hi = f64::MIN;
+        let mut see = |y: f64| {
+            lo = lo.min(y);
+            hi = hi.max(y);
+        };
+        if let Some(t) = &flat.terrain {
+            see(t.min_h);
+            see(t.max_h);
+        }
+        for pipe in &flat.pipes {
+            see(pipe.ground_start[1]);
+            see(pipe.ground_end[1]);
+        }
+        let relief = hi - lo;
+        if !relief.is_finite() || relief < 0.05 || flat.span <= 0.0 {
+            return 5.0;
+        }
+        ((0.10 * flat.span / relief).clamp(1.0, 12.0) * 2.0).round() / 2.0
+    }
+
+    /// Obiectul de sub cursor (nod sau conductă), în coordonate de scenă: nodul cel mai apropiat
+    /// pe ecran sau cel mai apropiat punct al unei conducte, dacă e la cel mult 40 px.
+    fn pick(&self, scene: &Scene, rect: Rect, cursor: Pos2) -> Option<Vec3> {
+        const MAX_PX: f32 = 40.0;
+        let cam = self.camera(scene, rect);
+        let mut best: Option<(f32, Vec3)> = None;
+        let mut offer = |d: f32, at: Vec3| {
+            if d <= MAX_PX && best.as_ref().is_none_or(|(bd, _)| d < *bd) {
+                best = Some((d, at));
+            }
+        };
+        for n in &scene.nodes {
+            if let Some((s, _)) = cam.project(f3(n.ground)) {
+                // nodurile contează puțin mai mult decât conductele de lângă ele
+                offer(s.distance(cursor) - 6.0, n.ground);
+            }
+        }
+        for p in &scene.pipes {
+            let (Some((a, _)), Some((b, _))) = (cam.project(f3(p.ground_start)), cam.project(f3(p.ground_end))) else { continue };
+            let ab = b - a;
+            let len2 = ab.length_sq();
+            let t = if len2 < 1e-6 { 0.0 } else { ((cursor - a).dot(ab) / len2).clamp(0.0, 1.0) };
+            let d = (a + ab * t).distance(cursor);
+            let at = [
+                p.ground_start[0] + (p.ground_end[0] - p.ground_start[0]) * t as f64,
+                p.ground_start[1] + (p.ground_end[1] - p.ground_start[1]) * t as f64,
+                p.ground_start[2] + (p.ground_end[2] - p.ground_start[2]) * t as f64,
+            ];
+            offer(d, at);
+        }
+        best.map(|(_, at)| at)
+    }
+
     /// Modelul 3D curent (cu exagerarea verticală și adâncimea setate în vedere) în formatul cerut.
     pub fn model_bytes(p: &ProjectData, format: crate::export3d::ModelFormat) -> Result<Vec<u8>, String> {
         let scene = Self::scene(p);
@@ -341,6 +403,11 @@ impl View3D {
         ctx.request_repaint();
     }
 
+    #[cfg(test)]
+    pub fn yaw_for_test(&self) -> f32 {
+        self.yaw
+    }
+
     /// Terenul încă se descarcă (captura trebuie să aștepte).
     pub fn terrain_loading(&self) -> bool {
         self.grid_rx.is_some()
@@ -352,6 +419,11 @@ impl View3D {
         self.sync_grid(&ctx, p);
         self.finish_png(&ctx);
 
+        ui.horizontal(|ui| {
+            if w::secondary_button(ui, &t.t("view3d.resetRelief")).on_hover_text(t.t("view3d.resetReliefTip")).clicked() {
+                set(p, "view3DExaggeration", json!(Self::pleasant_exaggeration(p)));
+            }
+        });
         ui.horizontal_wrapped(|ui| {
             let mut ex = setting_f64(p, "view3DExaggeration", 5.0);
             let l = ui.label(t.tf("view3d.exaggeration", &[("val", &format!("{ex}"))])).id;
@@ -377,6 +449,8 @@ impl View3D {
         let (rect, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::click_and_drag());
         self.last_rect = rect;
         self.interact(ui, &resp, &scene);
+        w::focus_ring(ui, &resp, 10);
+        w::describe(&resp, egui::Role::Canvas, &t.t("view3d.a11yLabel"));
         let painter = ui.painter_at(rect);
         if p.network_schema.is_empty() {
             painter.rect_filled(rect, 10.0, Color32::from_rgb(0xEE, 0xF2, 0xF6));
@@ -385,6 +459,14 @@ impl View3D {
         }
         let cam = self.camera(&scene, rect);
         self.draw(&painter, &cam, &scene, rect, ui.visuals().dark_mode);
+        // Obiectul spre care va merge zoom-ul: inel în jurul lui, ca să se vadă ce e „ales”.
+        if resp.hovered() && !resp.dragged() {
+            if let Some(obj) = resp.hover_pos().and_then(|c| self.pick(&scene, rect, c)) {
+                if let Some((s, _)) = cam.project(f3(obj)) {
+                    painter.circle_stroke(s, 12.0, Stroke::new(1.5, pl.accent));
+                }
+            }
+        }
 
         // Starea terenului
         ui.horizontal_wrapped(|ui| {
@@ -413,6 +495,39 @@ impl View3D {
     }
 
     fn interact(&mut self, ui: &Ui, resp: &egui::Response, scene: &Scene) {
+        // Tastatura, cu focus pe vedere: săgeți = rotire (cu Shift: deplasare), +/− = zoom, Home = reset.
+        if resp.has_focus() {
+            let (dx, dy, shift, zin, zout, home) = ui.input(|i| {
+                let k = |key| i.key_pressed(key) as i32 as f32;
+                (
+                    k(egui::Key::ArrowRight) - k(egui::Key::ArrowLeft),
+                    k(egui::Key::ArrowDown) - k(egui::Key::ArrowUp),
+                    i.modifiers.shift,
+                    i.key_pressed(egui::Key::Plus) || i.key_pressed(egui::Key::Equals),
+                    i.key_pressed(egui::Key::Minus),
+                    i.key_pressed(egui::Key::Home),
+                )
+            });
+            if shift {
+                let k = scene.span as f32 * self.zoom / 600.0 * 40.0;
+                let (s, c) = self.yaw.sin_cos();
+                // aceleași axe ca la tragerea cu Shift: dreapta/jos mută vederea
+                self.target[0] += (c * dx - s * dy) * k;
+                self.target[2] += (-s * dx - c * dy) * k;
+            } else {
+                self.yaw -= dx * 0.1;
+                self.pitch = (self.pitch - dy * 0.08).clamp(0.05, 1.5);
+            }
+            if zin {
+                self.zoom = (self.zoom / 1.15).clamp(0.05, 8.0);
+            }
+            if zout {
+                self.zoom = (self.zoom * 1.15).clamp(0.05, 8.0);
+            }
+            if home {
+                *self = Self { labels: self.labels, grid_rx: self.grid_rx.take(), ..Default::default() };
+            }
+        }
         if resp.dragged() {
             let d = resp.drag_delta();
             let pan = ui.input(|i| i.modifiers.shift || i.pointer.secondary_down() || i.pointer.middle_down());
@@ -429,7 +544,21 @@ impl View3D {
         }
         if resp.hovered() {
             let (scroll, pinch) = ui.input(|i| (i.smooth_scroll_delta.y, i.zoom_delta()));
-            self.zoom = (self.zoom / pinch * (-scroll / 400.0).exp()).clamp(0.05, 8.0);
+            let old = self.zoom;
+            let new = (old / pinch * (-scroll / 400.0).exp()).clamp(0.05, 8.0);
+            if (new - old).abs() > 1e-6 {
+                // Zoom spre obiectul de sub cursor (chiar dacă e într-o parte a ecranului):
+                // ținta camerei se apropie de obiect pe măsură ce te apropii.
+                if let Some(obj) = resp.hover_pos().and_then(|c| self.pick(scene, resp.rect, c)) {
+                    let c = scene.center;
+                    let ratio = (new / old) as f64;
+                    for k in 0..3 {
+                        let t = c[k] + self.target[k] as f64;
+                        self.target[k] = (obj[k] + (t - obj[k]) * ratio - c[k]) as f32;
+                    }
+                }
+                self.zoom = new;
+            }
         }
     }
 
@@ -540,5 +669,39 @@ mod tests {
         let key = scene3d::terrain_key(&a, 0.0, 1000.0);
         set(&mut p, "terrainGrid", serde_json::to_value(TerrainGrid { key, ..g }).unwrap());
         assert!(View3D::current_grid(&p).is_some());
+    }
+
+    use hidro_core::model::SchemaElement;
+
+    fn project() -> ProjectData {
+        let mut p = ProjectData::new("t".into(), "2026-01-01T00:00:00.000Z".into(), "2026-01-01".into());
+        p.network_schema = vec![
+            SchemaElement { kind: SchemaKind::Tronson, x: 0.0, y: 0.0, x2: Some(1000.0), y2: Some(0.0), label: Some("Tr 1".into()), ..Default::default() },
+            SchemaElement { kind: SchemaKind::Hidrant, x: 1000.0, y: 0.0, ..Default::default() },
+        ];
+        p
+    }
+
+    #[test]
+    fn pick_finds_the_object_near_the_cursor() {
+        let p = project();
+        let scene = View3D::scene(&p);
+        let v = View3D::default();
+        let rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(1000.0, 600.0));
+        let cam = v.camera(&scene, rect);
+        let hydrant = scene.nodes.iter().find(|n| n.kind == SchemaKind::Hidrant).expect("hidrant în scenă");
+        let (s, _) = cam.project(f3(hydrant.ground)).expect("vizibil");
+        // cursorul puțin lateral față de hidrant: alege hidrantul
+        let got = v.pick(&scene, rect, s + Vec2::new(12.0, -8.0)).expect("obiect ales");
+        assert_eq!(got, hydrant.ground);
+        // departe de orice obiect: nimic
+        assert!(v.pick(&scene, rect, Pos2::new(5.0, 590.0)).is_none());
+    }
+
+    #[test]
+    fn pleasant_exaggeration_is_within_the_slider_range() {
+        let p = project();
+        let e = View3D::pleasant_exaggeration(&p);
+        assert!((1.0..=12.0).contains(&e), "{e}");
     }
 }

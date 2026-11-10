@@ -41,6 +41,16 @@ pub fn parse_decimal(s: &str) -> Option<f64> {
     t.parse::<f64>().ok().filter(|v| v.is_finite())
 }
 
+/// Conturul de focus se desenează global, pentru orice widget (vezi `app::paint_focus_ring`);
+/// păstrat ca punct unic de apel pentru widgeturile desenate manual.
+pub fn focus_ring(_ui: &Ui, _resp: &egui::Response, _radius: u8) {}
+
+/// Etichetă pentru cititoarele de ecran la un widget desenat manual.
+pub fn describe(resp: &egui::Response, kind: egui::Role, label: &str) {
+    let enabled = resp.enabled();
+    resp.widget_info(|| egui::WidgetInfo::labeled(kind, enabled, label));
+}
+
 pub fn card<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
     let p = pal(ui);
     egui::Frame::new()
@@ -215,16 +225,25 @@ fn field_label(ui: &mut Ui, label: &str, tooltip: Option<&str>, computed: bool) 
 /// Bulină cu „?” (ajutor): la hover apare imediat explicația.
 fn help_icon(ui: &mut Ui, tip: &str) {
     let p = pal(ui);
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
-    let hot = resp.hovered();
+    // `click` o face focusabilă cu Tab; explicația apare și când are focus, nu doar la hover.
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::click());
+    let hot = resp.hovered() || resp.has_focus();
     let c = rect.center();
     let (line, fill) = if hot { (p.accent, p.accent_soft) } else { (p.muted, Color32::TRANSPARENT) };
     ui.painter().circle(c, 7.0, fill, Stroke::new(1.0, line));
     ui.painter().text(c, egui::Align2::CENTER_CENTER, "?", egui::FontId::proportional(10.5), line);
-    resp.on_hover_cursor(egui::CursorIcon::Help).on_hover_ui(|ui| {
+    focus_ring(ui, &resp, 8);
+    describe(&resp, egui::Role::Button, tip);
+    let resp = resp.on_hover_cursor(egui::CursorIcon::Help);
+    let show = |ui: &mut Ui| {
         ui.set_max_width(320.0);
         ui.add(egui::Label::new(RichText::new(tip).size(12.5)).wrap());
-    });
+    };
+    if resp.has_focus() {
+        egui::Tooltip::for_widget(&resp).show(show);
+    } else {
+        resp.on_hover_ui(show);
+    }
 }
 
 fn unit_suffix(ui: &mut Ui, unit: Option<&str>) {
@@ -460,17 +479,38 @@ pub fn tool_button_icon(ui: &mut Ui, text: &str, selected: bool, icon: impl FnOn
         egui::FontId::proportional(12.5),
         if selected { p.ink } else { p.ink2 },
     );
+    focus_ring(ui, &resp, 6);
+    describe(&resp, egui::Role::Button, text);
     resp
 }
 
-/// Buton pătrat cu pictogramă desenată de `icon`, cu fundal discret.
-pub fn icon_button(ui: &mut Ui, tip: &str, icon: impl FnOnce(&egui::Painter, egui::Rect, Color32)) -> egui::Response {
+/// Buton pătrat cu pictogramă desenată de `icon` (painter, dreptunghi, culoare, fundal), cu fundal discret.
+pub fn icon_button(ui: &mut Ui, tip: &str, icon: impl FnOnce(&egui::Painter, egui::Rect, Color32, Color32)) -> egui::Response {
     let p = pal(ui);
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(32.0, 28.0), egui::Sense::click());
     let fill = if resp.hovered() { p.accent_soft } else { p.panel2 };
     ui.painter().rect_filled(rect, CornerRadius::same(8), fill);
-    icon(ui.painter(), rect, if resp.hovered() { p.accent } else { p.ink2 });
+    icon(ui.painter(), rect, if resp.hovered() { p.accent } else { p.ink2 }, fill);
+    focus_ring(ui, &resp, 8);
+    describe(&resp, egui::Role::Button, tip);
     resp.on_hover_text(tip)
+}
+
+/// Pictograma temei: soare (în dark, ca să treci la light) sau lună (în light), desenate cu
+/// culorile temei curente.
+pub fn paint_theme_icon(p: &egui::Painter, r: egui::Rect, col: Color32, bg: Color32, dark: bool) {
+    let c = r.center();
+    if dark {
+        p.circle_filled(c, 3.6, col);
+        for k in 0..8 {
+            let a = k as f32 * std::f32::consts::FRAC_PI_4;
+            let (s, co) = a.sin_cos();
+            p.line_segment([c + egui::vec2(co, s) * 6.2, c + egui::vec2(co, s) * 8.2], Stroke::new(1.4, col));
+        }
+    } else {
+        p.circle_filled(c, 6.2, col);
+        p.circle_filled(c + egui::vec2(3.2, -2.6), 5.4, bg);
+    }
 }
 
 pub fn primary_button(ui: &mut Ui, text: &str) -> egui::Response {

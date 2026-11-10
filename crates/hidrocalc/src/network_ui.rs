@@ -740,7 +740,11 @@ fn export_panel(ui: &mut Ui, t: &I18n, p: &ProjectData, st: &mut NetworkUi) {
                 ui.horizontal(|ui| {
                     ui.add_enabled_ui(on && !busy, |ui| {
                         let mut sel = st.export_sel.contains(id);
-                        if ui.checkbox(&mut sel, "").changed() {
+                        let label = t.t(&format!("exp.{key}"));
+                        let cb = ui.checkbox(&mut sel, "");
+                        let enabled = cb.enabled();
+                        cb.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, enabled, sel, &label));
+                        if cb.changed() {
                             if sel {
                                 st.export_sel.insert(*id);
                             } else {

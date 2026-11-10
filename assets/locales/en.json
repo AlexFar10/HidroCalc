@@ -1,4 +1,28 @@
 {
+  "help": {
+    "title": "Keyboard shortcuts",
+    "close": "Close",
+    "general": "General",
+    "tab": "Move focus to the next / previous element",
+    "activate": "Activate the focused element (button, checkbox, list)",
+    "prev": "Previous step",
+    "next": "Next step",
+    "jump": "Jump straight to step 1…9",
+    "sidebar": "Show / hide the sidebar",
+    "help": "Open / close this window",
+    "plan": "2D plan (with focus on the drawing)",
+    "planPan": "Pan",
+    "planZoom": "Zoom",
+    "planDel": "Delete selection",
+    "planUndo": "Undo",
+    "planEsc": "Deselect / back to Select",
+    "view3d": "3D view (with focus on the view)",
+    "rotate": "Rotate",
+    "pan3d": "Pan",
+    "zoom3d": "Zoom",
+    "reset3d": "Reset the camera",
+    "focusHint": "Press Tab until you reach the drawing, or click it, to give it focus."
+  },
   "exp": {
     "afterSections": "Available once you define sections in Network",
     "title": "Export",
@@ -436,6 +460,7 @@
     "exportPDFError": "PDF export failed:"
   },
   "canvas": {
+    "a11yLabel": "2D network plan. Arrow keys to pan, plus and minus to zoom.",
     "tools": {
       "select": "Select / Move",
       "selectShort": "Select",
@@ -674,6 +699,9 @@
     "realVelocity": "Real velocity"
   },
   "view3d": {
+    "a11yLabel": "3D network view. Arrow keys to rotate, plus and minus to zoom.",
+    "resetRelief": "Reset",
+    "resetReliefTip": "Resets the vertical exaggeration to a value that suits the current relief.",
     "mode2D": "2D plan",
     "mode3D": "3D view",
     "empty": "The network schema is empty — draw the sections in the 2D plan first.",

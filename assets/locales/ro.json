@@ -1,4 +1,28 @@
 {
+  "help": {
+    "title": "Scurtături de tastatură",
+    "close": "Închide",
+    "general": "General",
+    "tab": "Mută focusul la elementul următor / anterior",
+    "activate": "Activează elementul cu focus (buton, bifă, listă)",
+    "prev": "Pasul anterior",
+    "next": "Pasul următor",
+    "jump": "Salt direct la pasul 1…9",
+    "sidebar": "Arată / ascunde bara laterală",
+    "help": "Deschide / închide această fereastră",
+    "plan": "Plan 2D (cu focus pe desen)",
+    "planPan": "Deplasare",
+    "planZoom": "Zoom",
+    "planDel": "Șterge selecția",
+    "planUndo": "Anulează",
+    "planEsc": "Deselectează / revine la Select",
+    "view3d": "Vedere 3D (cu focus pe vedere)",
+    "rotate": "Rotire",
+    "pan3d": "Deplasare",
+    "zoom3d": "Zoom",
+    "reset3d": "Resetează camera",
+    "focusHint": "Apasă Tab până ajungi la desen sau dă click pe el, ca să primească focus."
+  },
   "exp": {
     "afterSections": "Disponibil după ce definești tronsoanele în Rețea",
     "title": "Export",
@@ -401,6 +425,7 @@
     "exportPDFError": "Export PDF a eșuat:"
   },
   "canvas": {
+    "a11yLabel": "Plan 2D al rețelei. Săgeți pentru deplasare, plus și minus pentru zoom.",
     "tools": {
       "select": "Selectare / Mutare",
       "selectShort": "Select",
@@ -639,6 +664,9 @@
     "realVelocity": "Viteză reală"
   },
   "view3d": {
+    "a11yLabel": "Vedere 3D a rețelei. Săgeți pentru rotire, plus și minus pentru zoom.",
+    "resetRelief": "Revenire",
+    "resetReliefTip": "Readuce exagerarea verticală la o valoare potrivită pentru relieful curent.",
     "mode2D": "Plan 2D",
     "mode3D": "Vedere 3D",
     "empty": "Schema rețelei este goală — desenează tronsoanele în planul 2D.",
