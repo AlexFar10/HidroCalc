@@ -292,7 +292,7 @@ fn results_table(ui: &mut Ui, t: &I18n, p: &mut ProjectData, st: Option<&mut Net
                 ui.label(RichText::new(if s.d_over_k > 0.0 { fmt(s.d_over_k, 0) } else { "-".into() }).monospace().color(pl.muted));
                 ui.label(RichText::new(fmt(s.lambda, 4)).monospace().color(pl.muted));
                 ui.label(RichText::new(regime(t, &s.regime)).color(pl.muted));
-                if editable && ui.add(egui::Button::new(RichText::new("✕").color(pl.muted)).frame(false)).on_hover_text(t.t("common.delete")).clicked() {
+                if editable && w::confirm_delete(ui, id.with("del"), &t.t("common.delete"), &t.t("home.deleteConfirm")) {
                     remove = Some(i);
                 }
                 ui.end_row();

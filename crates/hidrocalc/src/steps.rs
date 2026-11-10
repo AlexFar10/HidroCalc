@@ -184,7 +184,7 @@ fn step2(ui: &mut Ui, t: &I18n, p: &mut ProjectData) -> Option<u32> {
                     })
                     .response
                     .on_hover_text(t.t("step2.korTooltip"));
-                    if ui.add(egui::Button::new(RichText::new("✕").color(pl.muted)).frame(false)).on_hover_text(t.t("common.delete")).clicked() {
+                    if w::confirm_delete(ui, id.with(("del", i)), &t.t("common.delete"), &t.t("home.deleteConfirm")) {
                         remove = Some(i);
                     }
                     ui.end_row();

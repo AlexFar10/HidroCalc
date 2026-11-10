@@ -121,6 +121,22 @@ impl Tool {
         (Tool::Eraser, "eraser"),
     ];
 
+    /// Litera scurtăturii de tastatură (cu focus pe desen).
+    pub fn shortcut_key(self) -> egui::Key {
+        match self {
+            Tool::Select => egui::Key::V,
+            Tool::Tronson => egui::Key::L,
+            Tool::Rezervor => egui::Key::R,
+            Tool::Sursa => egui::Key::S,
+            Tool::Hidrant => egui::Key::H,
+            Tool::CaminGrav => egui::Key::G,
+            Tool::CaminAer => egui::Key::A,
+            Tool::Subsistem => egui::Key::U,
+            Tool::Text => egui::Key::T,
+            Tool::Eraser => egui::Key::E,
+        }
+    }
+
     fn kind(self) -> Option<SchemaKind> {
         Some(match self {
             Tool::Rezervor => SchemaKind::Rezervor,
@@ -224,6 +240,10 @@ pub struct CanvasUi {
     capturing: bool,
     /// Cadre rămase în modul „captură” înainte de a cere imaginea.
     png_pending: u8,
+    /// Cursorul de la tastatură (în coordonate de schemă), când se desenează fără mouse.
+    kb_cursor: Option<Pos2>,
+    /// Începutul unui tronson început cu tastatura (Enter), în așteptarea capătului.
+    kb_tronson: Option<Pos2>,
     png_rx: Option<std::sync::mpsc::Receiver<std::sync::Arc<egui::ColorImage>>>,
     /// Mesaj pentru utilizator (text, eroare), preluat de aplicație ca notificare.
     pub notice: Option<(String, bool)>,
@@ -248,6 +268,8 @@ impl Default for CanvasUi {
             last_rect: Rect::NOTHING,
             capturing: false,
             png_pending: 0,
+            kb_cursor: None,
+            kb_tronson: None,
             png_rx: None,
             notice: None,
             png_ready: None,
@@ -591,6 +613,222 @@ impl CanvasUi {
         ctx.request_repaint();
     }
 
+    /// Comenzile de la tastatură ale desenului (apelat doar când desenul are focus).
+    fn keyboard(&mut self, ui: &mut Ui, rect: Rect, p: &mut ProjectData) {
+        let origin = rect.min;
+        let thr = HIT_PX / self.zoom;
+        let (dx, dy, shift, alt, zin, zout, enter, next, prev, esc) = ui.input(|i| {
+            let k = |key| i.key_pressed(key) as i32 as f32;
+            (
+                k(egui::Key::ArrowRight) - k(egui::Key::ArrowLeft),
+                k(egui::Key::ArrowDown) - k(egui::Key::ArrowUp),
+                i.modifiers.shift,
+                i.modifiers.alt,
+                i.key_pressed(egui::Key::Plus) || i.key_pressed(egui::Key::Equals),
+                i.key_pressed(egui::Key::Minus),
+                i.key_pressed(egui::Key::Enter),
+                i.key_pressed(egui::Key::PageDown),
+                i.key_pressed(egui::Key::PageUp),
+                i.key_pressed(egui::Key::Escape),
+            )
+        });
+        // Litere = instrumente (V, L, R, S, H, G, A, U, T, E), doar fără modificatori.
+        let plain = ui.input(|i| !i.modifiers.any());
+        if plain {
+            for (tool, _) in Tool::ALL {
+                if ui.input(|i| i.key_pressed(tool.shortcut_key())) {
+                    self.tool = tool;
+                    self.kb_tronson = None;
+                    self.drag = Drag::None;
+                }
+            }
+        }
+        if esc {
+            self.kb_tronson = None;
+            if matches!(self.drag, Drag::Draw { .. }) {
+                self.drag = Drag::None;
+            }
+        }
+
+        // Zoom pe centrul zonei.
+        if zin || zout {
+            let center = rect.center();
+            let before = self.to_world(origin, center);
+            self.zoom = (self.zoom * if zin { 1.25 } else { 1.0 / 1.25 }).clamp(ZOOM_MIN, ZOOM_MAX);
+            self.pan = center - origin - before.to_vec2() * self.zoom;
+        }
+
+        // PageDown / PageUp: următorul / anteriorul element (și îl aduce în cadru).
+        if next || prev {
+            let level = self.level(p).clone();
+            if !level.is_empty() {
+                let cur = self.selected.as_ref().and_then(|id| level.iter().position(|e| &e.id == id));
+                let i = match (cur, next) {
+                    (None, true) => 0,
+                    (None, false) => level.len() - 1,
+                    (Some(i), true) => (i + 1) % level.len(),
+                    (Some(i), false) => (i + level.len() - 1) % level.len(),
+                };
+                let e = &level[i];
+                self.selected = Some(e.id.clone());
+                let at = Pos2::new(e.x as f32, e.y as f32);
+                let s = self.to_screen(origin, at);
+                if !rect.shrink(30.0).contains(s) {
+                    self.pan = rect.center() - origin - at.to_vec2() * self.zoom;
+                }
+            }
+        }
+
+        let drawing = !matches!(self.tool, Tool::Select);
+        if drawing {
+            // Cursor de tastatură: săgețile îl mută, Enter = click în acel punct.
+            let cur = self.kb_cursor.unwrap_or_else(|| self.to_world(origin, rect.center()));
+            let step = 20.0 / self.zoom * if shift { 5.0 } else { 1.0 };
+            let moved = cur + Vec2::new(dx, dy) * step;
+            self.kb_cursor = Some(moved);
+            if let Some(start) = self.kb_tronson {
+                self.drag = Drag::Draw { start, end: moved };
+            }
+            if enter {
+                if self.tool == Tool::Tronson {
+                    match self.kb_tronson.take() {
+                        None => {
+                            let level = self.level(p).clone();
+                            let (sp, _) = self.snap(p, &level, moved, None);
+                            self.kb_tronson = Some(sp);
+                            self.drag = Drag::Draw { start: sp, end: sp };
+                        }
+                        Some(start) => {
+                            self.drag = Drag::None;
+                            let level = self.level(p).clone();
+                            let (end, _) = self.snap(p, &level, moved, None);
+                            self.finish_tronson(p, start, end);
+                        }
+                    }
+                } else {
+                    self.click_at(p, moved, thr);
+                }
+            }
+        } else {
+            self.kb_cursor = None;
+            let selected = self.selected.clone();
+            if (dx != 0.0 || dy != 0.0) && !alt && selected.is_some() {
+                // Element ales: săgețile îl mută (Shift = pas mare); cu Alt se deplasează vederea.
+                let step = if shift { 50.0 } else { 10.0 };
+                self.checkpoint(p);
+                if let Some(e) = self.level(p).iter_mut().find(|e| Some(&e.id) == selected.as_ref()) {
+                    e.x += (dx * step) as f64;
+                    e.y += (dy * step) as f64;
+                    if let (Some(x2), Some(y2)) = (e.x2, e.y2) {
+                        e.x2 = Some(x2 + (dx * step) as f64);
+                        e.y2 = Some(y2 + (dy * step) as f64);
+                    }
+                }
+            } else if dx != 0.0 || dy != 0.0 {
+                let step = if shift { 160.0 } else { 40.0 };
+                self.pan -= Vec2::new(dx, dy) * step;
+            }
+            // Enter pe un subsistem: intră în el (ca dublu-click).
+            if enter {
+                let level = self.level(p).clone();
+                if self.active_sub.is_none() {
+                    if let Some(sub) = selected.as_ref().and_then(|id| level.iter().find(|e| &e.id == id && e.kind == SchemaKind::Subsistem)) {
+                        self.active_sub = Some(sub.id.clone());
+                        self.selected = None;
+                        self.fitted = false;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Adaugă un tronson `start → end` (dacă nu e prea scurt) și îl selectează.
+    fn finish_tronson(&mut self, p: &mut ProjectData, start: Pos2, end: Pos2) {
+        if start.distance(end) * self.zoom > 5.0 {
+            self.checkpoint(p);
+            let level = self.level(p).clone();
+            let id = uuid::Uuid::new_v4().to_string();
+            self.level(p).push(SchemaElement {
+                id: id.clone(),
+                kind: SchemaKind::Tronson,
+                x: start.x as f64,
+                y: start.y as f64,
+                x2: Some(end.x as f64),
+                y2: Some(end.y as f64),
+                label: next_label(SchemaKind::Tronson, &level),
+                ..Default::default()
+            });
+            self.selected = Some(id);
+        }
+    }
+
+    /// Un „click” în punctul `wp` al schemei, cu instrumentul curent (mouse sau tastatură).
+    fn click_at(&mut self, p: &mut ProjectData, wp: Pos2, thr: f32) {
+        let level = self.level(p).clone();
+        match self.tool {
+            Tool::Select => {
+                self.selected = level.iter().rev().find(|e| hit_test(e, wp, thr).is_some()).map(|e| e.id.clone());
+            }
+            Tool::Eraser => {
+                if let Some(id) = level.iter().rev().find(|e| hit_test(e, wp, thr).is_some()).map(|e| e.id.clone()) {
+                    self.checkpoint(p);
+                    self.level(p).retain(|e| e.id != id);
+                }
+            }
+            Tool::Text => {
+                self.checkpoint(p);
+                let id = uuid::Uuid::new_v4().to_string();
+                self.level(p).push(SchemaElement {
+                    id: id.clone(),
+                    kind: SchemaKind::Text,
+                    x: wp.x as f64,
+                    y: wp.y as f64,
+                    text: Some("Text".into()),
+                    font_size: Some(14.0),
+                    ..Default::default()
+                });
+                self.selected = Some(id);
+                self.tool = Tool::Select;
+            }
+            Tool::Subsistem => {
+                if self.active_sub.is_some() {
+                    self.tool = Tool::Select;
+                    return;
+                }
+                self.checkpoint(p);
+                let id = uuid::Uuid::new_v4().to_string();
+                let label = next_label(SchemaKind::Subsistem, &p.network_schema);
+                let ports = vec![
+                    json!({"id": uuid::Uuid::new_v4().to_string(), "side": "L"}),
+                    json!({"id": uuid::Uuid::new_v4().to_string(), "side": "R"}),
+                ];
+                p.network_schema.push(SchemaElement {
+                    id: id.clone(),
+                    kind: SchemaKind::Subsistem,
+                    x: wp.x as f64,
+                    y: wp.y as f64,
+                    label,
+                    children: Some(Vec::new()),
+                    ports: Some(ports),
+                    ..Default::default()
+                });
+                self.selected = Some(id);
+                self.tool = Tool::Select;
+            }
+            tool => {
+                if let Some(kind) = tool.kind() {
+                    self.checkpoint(p);
+                    let (sp, _) = self.snap(p, &level, wp, None);
+                    let id = uuid::Uuid::new_v4().to_string();
+                    let label = next_label(kind, &level);
+                    self.level(p).push(SchemaElement { id: id.clone(), kind, x: sp.x as f64, y: sp.y as f64, label, ..Default::default() });
+                    self.selected = Some(id);
+                    self.tool = Tool::Select;
+                }
+            }
+        }
+    }
+
     /// `height` = înălțimea zonei de desen (reglabilă, vezi `network_ui::area_height`).
     pub fn ui(&mut self, ui: &mut Ui, t: &I18n, p: &mut ProjectData, height: f32) {
         self.finish_png(&ui.ctx().clone());
@@ -634,7 +872,7 @@ impl CanvasUi {
                     let short = if matches!(tool, Tool::Rezervor | Tool::Sursa) { key.to_string() } else { format!("{key}Short") };
                     let tool = *tool;
                     let resp = w::tool_button_icon(&mut c[i], &t.t(&format!("canvas.tools.{short}")), self.tool == tool, |p, ctr, col| paint_tool_icon(p, ctr, tool, col));
-                    if resp.on_hover_text(t.t(&format!("canvas.tools.{key}"))).clicked() {
+                    if resp.on_hover_text(format!("{} ({})", t.t(&format!("canvas.tools.{key}")), tool.shortcut_key().name())).clicked() {
                         self.tool = tool;
                     }
                 }
@@ -775,25 +1013,13 @@ impl CanvasUi {
                 self.undo_once(p);
             }
         }
-        // Tastatura, cu focus pe desen: săgeți = deplasare, +/− = zoom (pentru accesibilitate).
+        // Tastatura, cu focus pe desen (accesibilitate): fără mouse se pot alege, muta și desena elemente.
         if resp.has_focus() {
-            let (dx, dy, zin, zout) = ui.input(|i| {
-                let k = |key| i.key_pressed(key) as i32 as f32;
-                (
-                    k(egui::Key::ArrowLeft) - k(egui::Key::ArrowRight),
-                    k(egui::Key::ArrowUp) - k(egui::Key::ArrowDown),
-                    i.key_pressed(egui::Key::Plus) || i.key_pressed(egui::Key::Equals),
-                    i.key_pressed(egui::Key::Minus),
-                )
+            // Săgețile rămân la desen (nu mută focusul între widgeturi).
+            ui.memory_mut(|m| {
+                m.set_focus_lock_filter(resp.id, egui::EventFilter { horizontal_arrows: true, vertical_arrows: true, ..Default::default() })
             });
-            let step = if ui.input(|i| i.modifiers.shift) { 160.0 } else { 40.0 };
-            self.pan += Vec2::new(dx, dy) * step;
-            if zin || zout {
-                let center = rect.center();
-                let before = self.to_world(origin, center);
-                self.zoom = (self.zoom * if zin { 1.25 } else { 1.0 / 1.25 }).clamp(ZOOM_MIN, ZOOM_MAX);
-                self.pan = center - origin - before.to_vec2() * self.zoom;
-            }
+            self.keyboard(ui, rect, p);
         }
 
         let thr = HIT_PX / self.zoom;
@@ -816,69 +1042,7 @@ impl CanvasUi {
         if resp.clicked() {
             let Some(pos) = resp.interact_pointer_pos() else { return };
             let wp = self.to_world(origin, pos);
-            let level = self.level(p).clone();
-            match self.tool {
-                Tool::Select => {
-                    self.selected = level.iter().rev().find(|e| hit_test(e, wp, thr).is_some()).map(|e| e.id.clone());
-                }
-                Tool::Eraser => {
-                    if let Some(id) = level.iter().rev().find(|e| hit_test(e, wp, thr).is_some()).map(|e| e.id.clone()) {
-                        self.checkpoint(p);
-                        self.level(p).retain(|e| e.id != id);
-                    }
-                }
-                Tool::Text => {
-                    self.checkpoint(p);
-                    let id = uuid::Uuid::new_v4().to_string();
-                    self.level(p).push(SchemaElement {
-                        id: id.clone(),
-                        kind: SchemaKind::Text,
-                        x: wp.x as f64,
-                        y: wp.y as f64,
-                        text: Some("Text".into()),
-                        font_size: Some(14.0),
-                        ..Default::default()
-                    });
-                    self.selected = Some(id);
-                    self.tool = Tool::Select;
-                }
-                Tool::Subsistem => {
-                    if self.active_sub.is_some() {
-                        self.tool = Tool::Select;
-                        return;
-                    }
-                    self.checkpoint(p);
-                    let id = uuid::Uuid::new_v4().to_string();
-                    let label = next_label(SchemaKind::Subsistem, &p.network_schema);
-                    let ports = vec![
-                        json!({"id": uuid::Uuid::new_v4().to_string(), "side": "L"}),
-                        json!({"id": uuid::Uuid::new_v4().to_string(), "side": "R"}),
-                    ];
-                    p.network_schema.push(SchemaElement {
-                        id: id.clone(),
-                        kind: SchemaKind::Subsistem,
-                        x: wp.x as f64,
-                        y: wp.y as f64,
-                        label,
-                        children: Some(Vec::new()),
-                        ports: Some(ports),
-                        ..Default::default()
-                    });
-                    self.selected = Some(id);
-                    self.tool = Tool::Select;
-                }
-                tool => {
-                    if let Some(kind) = tool.kind() {
-                        self.checkpoint(p);
-                        let (sp, _) = self.snap(p, &level, wp, None);
-                        let id = uuid::Uuid::new_v4().to_string();
-                        let label = next_label(kind, &level);
-                        self.level(p).push(SchemaElement { id: id.clone(), kind, x: sp.x as f64, y: sp.y as f64, label, ..Default::default() });
-                        self.selected = Some(id);
-                        self.tool = Tool::Select;
-                    }
-                }
-            }
+            self.click_at(p, wp, thr);
             return;
         }
 
@@ -989,22 +1153,7 @@ impl CanvasUi {
 
         if resp.drag_stopped() {
             if let Drag::Draw { start, end } = std::mem::replace(&mut self.drag, Drag::None) {
-                if start.distance(end) * self.zoom > 5.0 {
-                    self.checkpoint(p);
-                    let level = self.level(p).clone();
-                    let id = uuid::Uuid::new_v4().to_string();
-                    self.level(p).push(SchemaElement {
-                        id: id.clone(),
-                        kind: SchemaKind::Tronson,
-                        x: start.x as f64,
-                        y: start.y as f64,
-                        x2: Some(end.x as f64),
-                        y2: Some(end.y as f64),
-                        label: next_label(SchemaKind::Tronson, &level),
-                        ..Default::default()
-                    });
-                    self.selected = Some(id);
-                }
+                self.finish_tronson(p, start, end);
             }
             if let Some(before) = self.pending_undo.take() {
                 if before != p.network_schema {
@@ -1154,6 +1303,17 @@ impl CanvasUi {
             draw_tronson(&painter, &preview, sp, sc, vs, z, mpp, rgb(0x94A3B8), false, None, Vec2::ZERO);
             let len = start.distance(*end) as f64 * mpp;
             painter.text(sp(*end) + Vec2::new(10.0, -10.0), Align2::LEFT_BOTTOM, format_dist(len), FontId::proportional(12.0), c_snap());
+        }
+
+        // Cursorul de tastatură (doar cu focus pe desen și un instrument de desen ales)
+        if resp.has_focus() && !self.capturing && self.tool != Tool::Select {
+            if let Some(k) = self.kb_cursor {
+                let s = sp(k);
+                let col = c_snap();
+                painter.line_segment([s - Vec2::new(12.0, 0.0), s + Vec2::new(12.0, 0.0)], Stroke::new(1.5, col));
+                painter.line_segment([s - Vec2::new(0.0, 12.0), s + Vec2::new(0.0, 12.0)], Stroke::new(1.5, col));
+                painter.circle_stroke(s, 5.0, Stroke::new(1.5, col));
+            }
         }
 
         // Indicator de snap + coordonate cursor (nu și pe captura PNG)

@@ -29,6 +29,20 @@ const NUM_KEYS: [egui::Key; 9] = [
     egui::Key::Num9,
 ];
 
+/// Textul unei scurtături pentru afișare („Ctrl+]”, „⌘B”, „F1”), cu parantezele drepte scrise ca atare.
+fn shortcut_text(ctx: &egui::Context, sc: &egui::KeyboardShortcut) -> String {
+    let key = match sc.logical_key {
+        egui::Key::OpenBracket => "[".to_string(),
+        egui::Key::CloseBracket => "]".to_string(),
+        k => k.name().to_string(),
+    };
+    if sc.modifiers.is_none() {
+        key
+    } else {
+        format!("{}+{key}", ctx.format_modifiers(sc.modifiers))
+    }
+}
+
 /// Acțiuni din panoul de proiect al barei laterale, executate după desenare.
 enum Act {
     Home,
@@ -39,6 +53,12 @@ enum Act {
 
 /// Înălțimea benzii de sus (logo + bara de meniuri); aceeași în bara laterală și în cea de sus.
 const BAR_H: f32 = 56.0;
+/// Lățimea barei laterale.
+const SIDEBAR_W: f32 = 270.0;
+/// Sub această lățime a ferestrei bara laterală se ascunde singură (se poate deschide manual).
+const NARROW_W: f32 = 1100.0;
+/// Lățimea minimă a conținutului; sub ea apare derulare orizontală, nu se strâng câmpurile.
+const MIN_CONTENT_W: f32 = 720.0;
 const SAVE_DEBOUNCE: Duration = Duration::from_millis(300);
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
@@ -48,6 +68,12 @@ pub struct Settings {
     pub dark: bool,
     /// Bara laterală e ascunsă.
     pub sidebar_closed: bool,
+    /// Contrast ridicat (paleta AAA).
+    pub high_contrast: bool,
+    /// Fără animații.
+    pub reduce_motion: bool,
+    /// Dimensiunea interfeței în procente (0 = implicit 100%).
+    pub ui_scale_pct: u16,
 }
 
 /// O captură de imagine în curs (planul 2D sau vederea 3D).
@@ -73,6 +99,7 @@ struct Toast {
     text: String,
     error: bool,
     since: Instant,
+    closed: bool,
 }
 
 pub struct HidroApp {
@@ -92,6 +119,10 @@ pub struct HidroApp {
     terrain: crate::terrain_sync::TerrainSync,
     export_job: Option<ExportJob>,
     show_help: bool,
+    /// Cerere de a muta focusul de la tastatură pe conținut („Sari la conținut”).
+    focus_content: bool,
+    /// Pe ferestre înguste bara laterală e ascunsă implicit; aici se ține dacă e deschisă manual.
+    narrow_open: bool,
     logo: Option<egui::TextureHandle>,
 }
 
@@ -113,6 +144,11 @@ impl HidroApp {
 
     pub fn with_db(cc: &eframe::CreationContext<'_>, settings: Settings, db: Result<Db, String>) -> Self {
         theme::install(&cc.egui_ctx);
+        theme::set_high_contrast(&cc.egui_ctx, settings.high_contrast);
+        theme::set_reduce_motion(&cc.egui_ctx, settings.reduce_motion);
+        if settings.ui_scale_pct > 0 {
+            cc.egui_ctx.set_zoom_factor(settings.ui_scale_pct as f32 / 100.0);
+        }
         cc.egui_ctx.set_theme(if settings.dark { egui::Theme::Dark } else { egui::Theme::Light });
         let (db, db_error) = match db {
             Ok(db) => (Some(db), None),
@@ -134,6 +170,8 @@ impl HidroApp {
             terrain: Default::default(),
             export_job: None,
             show_help: false,
+            focus_content: false,
+            narrow_open: false,
             logo: None,
         };
         app.reload_list();
@@ -141,7 +179,7 @@ impl HidroApp {
     }
 
     fn toast(&mut self, text: impl Into<String>, error: bool) {
-        self.toasts.push(Toast { text: text.into(), error, since: Instant::now() });
+        self.toasts.push(Toast { text: text.into(), error, since: Instant::now(), closed: false });
     }
 
     fn reload_list(&mut self) {
@@ -275,7 +313,17 @@ impl HidroApp {
 
     fn set_settings(&mut self, ctx: &egui::Context, s: Settings) {
         self.t.lang = s.lang;
-        self.settings = s;
+        let old = std::mem::replace(&mut self.settings, s);
+        if old.high_contrast != self.settings.high_contrast {
+            theme::set_high_contrast(ctx, self.settings.high_contrast);
+            ctx.request_discard("contrast schimbat");
+        }
+        if old.reduce_motion != self.settings.reduce_motion {
+            theme::set_reduce_motion(ctx, self.settings.reduce_motion);
+        }
+        if old.ui_scale_pct != self.settings.ui_scale_pct {
+            ctx.set_zoom_factor(if self.settings.ui_scale_pct == 0 { 1.0 } else { self.settings.ui_scale_pct as f32 / 100.0 });
+        }
         let theme = if self.settings.dark { egui::Theme::Dark } else { egui::Theme::Light };
         if ctx.theme() != theme {
             ctx.set_theme(theme);
@@ -308,7 +356,9 @@ impl HidroApp {
         let (mut new, mut import) = (false, false);
         let mut go: Option<u32> = None;
         let mut toggle_sidebar = false;
-        let closed = self.settings.sidebar_closed;
+        let mut go_home = false;
+        let mut skip = false;
+        let closed = !self.sidebar_visible(ui.ctx());
         let has_project = self.project.is_some();
         let step = self.project.as_ref().map_or(0, |p| p.current_step);
         let names = self.t.list("steps.names");
@@ -318,7 +368,39 @@ impl HidroApp {
                 ui.spacing_mut().button_padding = egui::vec2(10.0, 5.0);
                 ui.spacing_mut().interact_size.y = 28.0;
                 if has_project {
-                    let tip = format!("{} ({})", self.t.t(if closed { "nav.showSidebar" } else { "nav.hideSidebar" }), ui.ctx().format_shortcut(&SC_SIDEBAR));
+                    // „Sari la conținut”: primul element la Tab; devine vizibil doar când are focus.
+                    let r = ui.interact(egui::Rect::from_min_size(ui.cursor().min, egui::vec2(1.0, 1.0)), egui::Id::NULL.with("skip_link"), egui::Sense::click());
+                    widgets::describe(&r, egui::Role::Button, &self.t.t("a11y.skip"));
+                    if r.has_focus() {
+                        egui::Area::new(egui::Id::NULL.with("skip_link_area")).order(egui::Order::Foreground).fixed_pos(egui::pos2(12.0, 14.0)).show(ui.ctx(), |ui| {
+                            egui::Frame::new().fill(p.accent).corner_radius(CornerRadius::same(8)).inner_margin(Margin::symmetric(12, 6)).show(ui, |ui| {
+                                ui.label(RichText::new(self.t.t("a11y.skip")).color(p.accent_fg));
+                            });
+                        });
+                    }
+                    if r.clicked() {
+                        skip = true;
+                    }
+                }
+                if has_project && !closed {
+                    // Logo + titlu în colțul stânga-sus, deasupra barei laterale; click = pagina de start.
+                    let head = ui.allocate_ui_with_layout(egui::vec2(SIDEBAR_W - 16.0 - 8.0, BAR_H), Layout::left_to_right(Align::Center), |ui| {
+                        ui.set_min_size(egui::vec2(SIDEBAR_W - 16.0 - 8.0, BAR_H));
+                        ui.add(egui::Image::new((logo, egui::vec2(24.0, 24.0))));
+                        widgets::wordmark(ui, 18.0);
+                    });
+                    let click = ui.interact(head.response.rect, egui::Id::NULL.with("logo_home"), egui::Sense::click());
+                    widgets::describe(&click, egui::Role::Button, &self.t.t("nav.home"));
+                    if click.hovered() {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    }
+                    if click.clicked() {
+                        go_home = true;
+                    }
+                    ui.add_space(8.0);
+                }
+                if has_project {
+                    let tip = format!("{} ({})", self.t.t(if closed { "nav.showSidebar" } else { "nav.hideSidebar" }), shortcut_text(ui.ctx(), &SC_SIDEBAR));
                     if widgets::icon_button(ui, &tip, |p, r, col, _bg| {
                         let body = r.shrink2(egui::vec2(9.0, 8.0));
                         p.rect_stroke(body, 2.0, Stroke::new(1.4, col), egui::StrokeKind::Middle);
@@ -352,7 +434,7 @@ impl HidroApp {
                         })
                         .inner
                     };
-                    if arrow(ui, "←", format!("{} ({})", self.t.t("common.back").trim_start_matches("← "), ui.ctx().format_shortcut(&SC_PREV)), step > 1) {
+                    if arrow(ui, "←", format!("{} ({})", self.t.t("common.back").trim_start_matches("← "), shortcut_text(ui.ctx(), &SC_PREV)), step > 1) {
                         go = Some(step - 1);
                     }
                     ui.add_space(6.0);
@@ -375,7 +457,7 @@ impl HidroApp {
                             });
                         });
                     ui.add_space(6.0);
-                    if arrow(ui, "→", format!("{} ({})", self.t.t("nav.stepNext").trim_end_matches(" →"), ui.ctx().format_shortcut(&SC_NEXT)), step < 9) {
+                    if arrow(ui, "→", format!("{} ({})", self.t.t("nav.stepNext").trim_end_matches(" →"), shortcut_text(ui.ctx(), &SC_NEXT)), step < 9) {
                         go = Some(step + 1);
                     }
                 }
@@ -402,14 +484,11 @@ impl HidroApp {
             });
         });
         let r = resp.response.rect;
-        if with_logo {
-            ui.painter().hline(r.x_range(), r.bottom(), Stroke::new(1.0, p.border));
-        }
         if let (Some(g), Some(project)) = (go, &mut self.project) {
             project.current_step = g;
         }
         if toggle_sidebar {
-            s.sidebar_closed = !s.sidebar_closed;
+            self.toggle_sidebar(ui.ctx());
         }
         if s != self.settings {
             self.set_settings(ui.ctx(), s);
@@ -424,6 +503,22 @@ impl HidroApp {
         r
     }
 
+    /// Bara laterală e vizibilă: pe ferestre înguste doar dacă a fost deschisă manual,
+    /// altfel după preferința din setări.
+    fn sidebar_visible(&self, ctx: &egui::Context) -> bool {
+        if ctx.content_rect().width() < NARROW_W { self.narrow_open } else { !self.settings.sidebar_closed }
+    }
+
+    fn toggle_sidebar(&mut self, ctx: &egui::Context) {
+        if ctx.content_rect().width() < NARROW_W {
+            self.narrow_open = !self.narrow_open;
+        } else {
+            let mut s = self.settings.clone();
+            s.sidebar_closed = !s.sidebar_closed;
+            self.set_settings(ctx, s);
+        }
+    }
+
     /// Scurtături globale: pași, bara laterală, ajutor. Se consumă înainte de desenare.
     fn handle_shortcuts(&mut self, ctx: &egui::Context) {
         if ctx.input_mut(|i| i.consume_shortcut(&SC_HELP)) {
@@ -433,9 +528,7 @@ impl HidroApp {
             return;
         }
         if ctx.input_mut(|i| i.consume_shortcut(&SC_SIDEBAR)) {
-            let mut s = self.settings.clone();
-            s.sidebar_closed = !s.sidebar_closed;
-            self.set_settings(ctx, s);
+            self.toggle_sidebar(ctx);
         }
         let mut go: Option<u32> = None;
         let step = self.project.as_ref().map_or(1, |p| p.current_step);
@@ -475,7 +568,7 @@ impl HidroApp {
         }
         let p = theme::palette(ctx);
         let t = &self.t;
-        let sc = |s: &egui::KeyboardShortcut| ctx.format_shortcut(s);
+        let sc = |s: &egui::KeyboardShortcut| shortcut_text(ctx, s);
         let cmd = |k: &str| format!("{}+{k}", ctx.format_modifiers(egui::Modifiers::COMMAND));
         let rows: Vec<(&str, Vec<(String, String)>)> = vec![
             (
@@ -492,7 +585,10 @@ impl HidroApp {
             (
                 "help.plan",
                 vec![
-                    ("← ↑ → ↓".into(), t.t("help.planPan")),
+                    ("← ↑ → ↓".into(), t.t("help.planMove")),
+                    ("PageDown / PageUp".into(), t.t("help.planCycle")),
+                    ("V L R S H G A U T E".into(), t.t("help.planTools")),
+                    ("Enter".into(), t.t("help.planEnter")),
                     ("+ / −".into(), t.t("help.planZoom")),
                     ("Delete".into(), t.t("help.planDel")),
                     (cmd("Z"), t.t("help.planUndo")),
@@ -510,7 +606,31 @@ impl HidroApp {
             ),
         ];
         let mut open = true;
-        egui::Window::new(t.t("help.title")).open(&mut open).collapsible(false).resizable(false).default_width(440.0).show(ctx, |ui| {
+        let mut s = self.settings.clone();
+        egui::Window::new(t.t("help.title")).open(&mut open).collapsible(false).resizable(false).default_width(480.0).anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0)).show(ctx, |ui| {
+            let max_h = (ctx.content_rect().height() - 120.0).max(200.0);
+            egui::ScrollArea::vertical().max_height(max_h).min_scrolled_height(max_h.min(640.0)).show(ui, |ui| {
+            widgets::section_title(ui, &t.t("help.a11yTitle"));
+            let pct = if s.ui_scale_pct == 0 { 100 } else { s.ui_scale_pct };
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(t.t("help.uiSize")).color(p.ink2));
+                if ui.add_enabled(pct > 70, egui::Button::new("−")).clicked() {
+                    s.ui_scale_pct = pct.saturating_sub(10).max(70);
+                }
+                ui.label(RichText::new(format!("{pct}%")).monospace());
+                if ui.add_enabled(pct < 200, egui::Button::new("+")).clicked() {
+                    s.ui_scale_pct = (pct + 10).min(200);
+                }
+                if ui.button(t.t("help.reset")).clicked() {
+                    s.ui_scale_pct = 100;
+                }
+            });
+            ui.add(egui::Label::new(RichText::new(t.t("help.zoomHint")).size(12.0).color(p.muted)).wrap());
+            ui.add_space(4.0);
+            ui.checkbox(&mut s.high_contrast, t.t("help.contrast"));
+            ui.checkbox(&mut s.reduce_motion, t.t("help.motion"));
+            ui.add_space(8.0);
+            ui.separator();
             for (title, items) in &rows {
                 ui.add_space(4.0);
                 widgets::section_title(ui, &t.t(title));
@@ -524,7 +644,11 @@ impl HidroApp {
             }
             ui.add_space(8.0);
             ui.add(egui::Label::new(RichText::new(t.t("help.focusHint")).size(12.0).color(p.muted)).wrap());
+            });
         });
+        if s != self.settings {
+            self.set_settings(ctx, s);
+        }
         self.show_help = open;
     }
 
@@ -540,7 +664,7 @@ impl HidroApp {
                 }
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     let tip = if s.dark { self.t.t("nav.switchToLight") } else { self.t.t("nav.switchToDark") };
-                    let help_tip = format!("{} ({})", self.t.t("help.title"), ui.ctx().format_shortcut(&SC_HELP));
+                    let help_tip = format!("{} ({})", self.t.t("help.title"), shortcut_text(ui.ctx(), &SC_HELP));
                     if widgets::icon_button(ui, &help_tip, |p, r, col, _bg| {
                         p.text(r.center(), egui::Align2::CENTER_CENTER, "?", egui::FontId::proportional(15.0), col);
                     })
@@ -656,21 +780,9 @@ impl HidroApp {
 
     fn sidebar(&mut self, ui: &mut egui::Ui) {
         let p = pal(ui);
-        let logo = self.logo_id(ui.ctx());
         let Some(project) = &mut self.project else { return };
         let mut act: Option<Act> = None;
-        let head = ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), BAR_H), Layout::left_to_right(Align::Center), |ui| {
-            ui.set_min_height(BAR_H);
-            ui.add(egui::Image::new((logo, egui::vec2(24.0, 24.0))));
-            widgets::wordmark(ui, 18.0);
-        });
-        let click = ui.interact(head.response.rect, ui.scope_id().with("logo_home"), egui::Sense::click());
-        if click.hovered() {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        }
-        if click.clicked() {
-            act = Some(Act::Home);
-        }
+        ui.add_space(8.0);
         ui.add_space(14.0);
         ui.label(RichText::new(self.t.t("nav.menuProject").to_uppercase()).size(11.5).strong().color(p.muted));
         ui.add_space(2.0);
@@ -787,12 +899,12 @@ impl HidroApp {
         }
 
         // Ecran complet (pasul 8): fără bara laterală și fără pași, zona de desen ia tot spațiul.
-        if self.settings.sidebar_closed {
-            // Bara laterală ascunsă: bara de sus ocupă toată lățimea și poartă logo-ul.
-            self.app_bar(ui, true);
-        } else {
+        // Ordinea de creare = ordinea Tab: întâi bara de sus (logo, pași), apoi bara laterală, apoi conținutul.
+        let sidebar_visible = self.sidebar_visible(ui.ctx());
+        let bar = self.app_bar(ui, !sidebar_visible);
+        if sidebar_visible {
             let side = egui::Panel::left("sidebar")
-                .exact_size(270.0)
+                .exact_size(SIDEBAR_W)
                 .resizable(false)
                 .frame(egui::Frame::new().fill(p.panel).inner_margin(Margin::symmetric(12, 0)))
                 .show(ui, |ui| {
@@ -800,16 +912,20 @@ impl HidroApp {
                     egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| self.sidebar(ui));
                 });
             let sr = side.response.rect;
-            let bar = self.app_bar(ui, false);
-            // Banda de sus (logo + bara) e una singură: o linie continuă dedesubt, apoi separatorul vertical.
-            let y = sr.top() + BAR_H;
-            ui.painter().hline(sr.left()..=bar.right(), y, Stroke::new(1.0, p.border));
-            ui.painter().vline(sr.right(), y..=sr.bottom(), Stroke::new(1.0, p.border));
+            ui.painter().vline(sr.right(), bar.bottom()..=sr.bottom(), Stroke::new(1.0, p.border));
         }
 
         egui::CentralPanel::default().frame(egui::Frame::new().fill(p.bg).inner_margin(Margin::symmetric(20, 18))).show(ui, |ui| {
             let step = self.project.as_ref().map_or(1, |p| p.current_step);
-            egui::ScrollArea::vertical().id_salt(("step", step)).auto_shrink(false).show(ui, |ui| {
+            // Ancoră invizibilă la începutul conținutului: țintă pentru „Sari la conținut”.
+            let anchor = ui.interact(egui::Rect::from_min_size(ui.cursor().min, egui::vec2(1.0, 1.0)), egui::Id::NULL.with("content_anchor"), egui::Sense::focusable_noninteractive());
+            if std::mem::take(&mut self.focus_content) {
+                ui.memory_mut(|m| m.request_focus(anchor.id));
+            }
+            // Derulare și pe orizontală: sub `MIN_CONTENT_W` conținutul nu se mai strânge, ci se derulează.
+            let viewport_w = ui.available_width();
+            egui::ScrollArea::both().id_salt(("step", step)).auto_shrink(false).show(ui, |ui| {
+                ui.set_width(viewport_w.max(MIN_CONTENT_W));
                 let (Some(project), Some(results)) = (&mut self.project, &self.results) else { return };
                 if let Some(go) = steps::show(ui, &self.t, project, results, &mut self.net_ui) {
                     project.current_step = go;
@@ -952,13 +1068,15 @@ impl HidroApp {
     }
 
     fn toasts_ui(&mut self, ctx: &egui::Context) {
-        self.toasts.retain(|t| t.since.elapsed() < Duration::from_secs(5));
+        // Erorile rămân până sunt închise; celelalte mesaje dispar după 8 secunde.
+        self.toasts.retain(|t| !t.closed && (t.error || t.since.elapsed() < Duration::from_secs(8)));
         if self.toasts.is_empty() {
             return;
         }
         let p = theme::palette(ctx);
         egui::Area::new(egui::Id::unique("toasts")).anchor(egui::Align2::RIGHT_BOTTOM, egui::vec2(-16.0, -16.0)).show(ctx, |ui| {
-            for t in &self.toasts {
+            let close_tip = self.t.t("common.close");
+            for t in &mut self.toasts {
                 let fg = if t.error { p.danger } else { p.ink };
                 egui::Frame::new()
                     .fill(p.panel)
@@ -966,8 +1084,16 @@ impl HidroApp {
                     .corner_radius(CornerRadius::same(10))
                     .inner_margin(Margin::symmetric(14, 10))
                     .show(ui, |ui| {
-                        ui.set_max_width(380.0);
-                        ui.add(egui::Label::new(RichText::new(&t.text).color(fg)).wrap());
+                        ui.set_max_width(400.0);
+                        ui.horizontal(|ui| {
+                            let text = if t.error { format!("⚠  {}", t.text) } else { t.text.clone() };
+                            ui.add(egui::Label::new(RichText::new(text).color(fg)).wrap());
+                            let r = ui.add(egui::Button::new(RichText::new("✕").color(p.muted)).frame(false));
+                            widgets::describe(&r, egui::Role::Button, &close_tip);
+                            if r.on_hover_text(&close_tip).clicked() {
+                                t.closed = true;
+                            }
+                        });
                     });
                 ui.add_space(6.0);
             }
@@ -979,10 +1105,17 @@ impl HidroApp {
 impl eframe::App for HidroApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx0 = ui.ctx().clone();
+        // Ctrl/⌘ +/− schimbă zoom-ul din egui: îl păstrăm în setări.
+        let pct = (ctx0.zoom_factor() * 100.0).round() as u16;
+        if pct != self.settings.ui_scale_pct && !(pct == 100 && self.settings.ui_scale_pct == 0) {
+            self.settings.ui_scale_pct = pct;
+        }
         self.handle_shortcuts(&ctx0);
         let label = self.t.t("common.formulas");
+        let invalid_msg = self.t.t("a11y.invalidNumber");
         ui.ctx().data_mut(|d| {
             d.insert_temp(egui::Id::NULL.with("formulas_label"), label);
+            d.insert_temp(egui::Id::NULL.with("invalid_number_msg"), invalid_msg);
             d.insert_temp(egui::Id::NULL.with("formula_seq"), 0u32);
             d.insert_temp(egui::Id::NULL.with("formula_step"), self.project.as_ref().map_or(0, |p| p.current_step));
         });
@@ -1336,6 +1469,179 @@ mod snapshots {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    /// Erorile rămân până sunt închise; mesajele obișnuite dispar; contrastul ridicat schimbă paleta.
+    #[test]
+    fn toasts_persist_and_high_contrast_applies() {
+        let dir = std::env::temp_dir().join(format!("hidrocalc-ac-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("a.db");
+        let mut h = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1360.0, 900.0))
+            .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
+        sample(h.state_mut());
+        h.state_mut().toast("eroare de test", true);
+        h.state_mut().toast("salvat", false);
+        for t in &mut h.state_mut().toasts {
+            t.since = Instant::now() - Duration::from_secs(60);
+        }
+        h.run_steps(2);
+        let left: Vec<String> = h.state().toasts.iter().map(|t| t.text.clone()).collect();
+        assert_eq!(left, ["eroare de test"], "doar eroarea trebuie să rămână");
+
+        let ctx = h.ctx.clone();
+        let before = theme::palette(&ctx).ink;
+        let mut s = h.state().settings.clone();
+        s.high_contrast = true;
+        h.state_mut().set_settings(&ctx, s);
+        h.run_steps(2);
+        let after = theme::palette(&ctx).ink;
+        assert_ne!(before, after, "paleta cu contrast ridicat trebuie să difere");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Ștergerea unui tronson din tabel cere confirmare (al doilea click).
+    #[test]
+    fn deleting_a_section_needs_confirmation() {
+        use egui_kittest::kittest::Queryable;
+        let dir = std::env::temp_dir().join(format!("hidrocalc-dc-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("d.db");
+        let mut h = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(2400.0, 1300.0)) // tabelul e lat: butonul de ștergere trebuie să încapă în fereastră
+            .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
+        sample(h.state_mut());
+        h.state_mut().project.as_mut().unwrap().current_step = 8;
+        h.run_steps(3);
+        let n = |h: &egui_kittest::Harness<'_, HidroApp>| h.state().project.as_ref().unwrap().network_sections.len();
+        let before = n(&h);
+        assert!(before >= 2);
+        let tip = h.state().t.t("common.delete");
+        h.get_all_by_label(&tip).next().expect("buton de ștergere").click();
+        h.run_steps(2);
+        assert_eq!(n(&h), before, "primul click doar cere confirmare");
+        let confirm = h.state().t.t("home.deleteConfirm");
+        h.get_all_by_label(&confirm).next().expect("buton de confirmare").click();
+        h.run_steps(2);
+        assert_eq!(n(&h), before - 1, "al doilea click șterge tronsonul");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Fereastra de ajutor/accesibilitate și contrastul ridicat (verificare vizuală).
+    #[test]
+    fn help_window_and_high_contrast_snapshot() {
+        let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/ui-snapshots");
+        std::fs::create_dir_all(&out).unwrap();
+        for (dark, hc) in [(false, false), (true, true), (false, true)] {
+            let dir = std::env::temp_dir().join(format!("hidrocalc-hw-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir_all(&dir).unwrap();
+            let db_path = dir.join("h.db");
+            let theme = if dark { egui::Theme::Dark } else { egui::Theme::Light };
+            let mut h = egui_kittest::Harness::builder()
+                .with_size(egui::vec2(1360.0, 900.0))
+                .with_theme(theme)
+                .wgpu()
+                .build_eframe(|cc| HidroApp::with_db(cc, Settings { dark, high_contrast: hc, ..Default::default() }, Db::open(&db_path)));
+            sample(h.state_mut());
+            h.state_mut().project.as_mut().unwrap().current_step = 4;
+            h.state_mut().show_help = true;
+            h.run_steps(4);
+            h.render().unwrap().save(out.join(format!("help-{}{}.png", if dark { "dark" } else { "light" }, if hc { "-hc" } else { "" }))).unwrap();
+            let _ = std::fs::remove_dir_all(dir);
+        }
+    }
+
+    /// Responsive minimal: conținutul umple spațiul (nu sare), iar sub 1100 px bara laterală se ascunde singură.
+    #[test]
+    fn layout_adapts_to_width_and_sidebar() {
+        use egui_kittest::kittest::Queryable;
+        let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/ui-snapshots");
+        std::fs::create_dir_all(&out).unwrap();
+        let title_x = |h: &egui_kittest::Harness<'_, HidroApp>| h.get_by_label_contains("Debite ale necesarului").rect().min.x;
+        let mk = |w: f32| {
+            let dir = std::env::temp_dir().join(format!("hidrocalc-rw-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir_all(&dir).unwrap();
+            let db_path = dir.join("r.db");
+            let mut h = egui_kittest::Harness::builder()
+                .with_size(egui::vec2(w, 800.0))
+                .with_theme(egui::Theme::Light)
+                .wgpu()
+                .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
+            sample(h.state_mut());
+            h.state_mut().project.as_mut().unwrap().current_step = 3;
+            h.run_steps(3);
+            (h, dir)
+        };
+        // 1360: bara deschisă, apoi ascunsă — conținutul pornește de la marginea disponibilă, fără salt în gol
+        let (mut h, d1) = mk(1360.0);
+        let open_x = title_x(&h);
+        assert!(open_x >= 270.0 && open_x < 330.0, "cu bara deschisă conținutul începe lângă ea: {open_x}");
+        h.render().unwrap().save(out.join("responsive-1360-open.png")).unwrap();
+        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::B);
+        h.run_steps(3);
+        let closed_x = title_x(&h);
+        assert!(closed_x < 60.0, "cu bara ascunsă conținutul umple lățimea: {closed_x}");
+        h.render().unwrap().save(out.join("responsive-1360-closed.png")).unwrap();
+        // 1000: bara se ascunde singură; Cmd+B o deschide
+        let (mut h2, d2) = mk(1000.0);
+        assert!(!h2.state().sidebar_visible(&h2.ctx.clone()), "sub 1100 px bara e ascunsă implicit");
+        assert!(title_x(&h2) < 60.0);
+        h2.render().unwrap().save(out.join("responsive-1000.png")).unwrap();
+        h2.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::B);
+        h2.run_steps(3);
+        assert!(h2.state().sidebar_visible(&h2.ctx.clone()), "Cmd+B o deschide și pe fereastră îngustă");
+        h2.render().unwrap().save(out.join("responsive-1000-open.png")).unwrap();
+        for d in [d1, d2] {
+            let _ = std::fs::remove_dir_all(d);
+        }
+    }
+
+    /// Desen și editare fără mouse în planul 2D: tronson din tastatură, selectare și mutare.
+    #[test]
+    fn canvas_keyboard_draw_select_and_move() {
+        use egui_kittest::kittest::Queryable;
+        let dir = std::env::temp_dir().join(format!("hidrocalc-kc-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("c.db");
+        let mut h = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1360.0, 900.0))
+            .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
+        sample(h.state_mut());
+        h.state_mut().project.as_mut().unwrap().current_step = 8;
+        h.run_steps(3);
+        let count = |h: &egui_kittest::Harness<'_, HidroApp>| h.state().project.as_ref().unwrap().network_schema.len();
+        let before = count(&h);
+        let label = h.state().t.t("canvas.a11yLabel");
+        h.get_by_role_and_label(egui::accesskit::Role::Canvas, &label).focus();
+        h.run_steps(1);
+
+        // L = tronson; Enter = început; săgeți; Enter = sfârșit
+        h.key_press(egui::Key::L);
+        h.run_steps(1);
+        assert_eq!(h.state().net_ui.canvas.tool, crate::canvas::Tool::Tronson);
+        h.key_press(egui::Key::Enter);
+        h.run_steps(1);
+        for _ in 0..8 {
+            h.key_press(egui::Key::ArrowRight);
+            h.run_steps(1);
+        }
+        h.key_press(egui::Key::Enter);
+        h.run_steps(2);
+        assert_eq!(count(&h), before + 1, "tronsonul făcut din tastatură trebuie adăugat");
+
+        // V = Select; PageDown alege un element; săgeata dreapta îl mută
+        h.key_press(egui::Key::V);
+        h.run_steps(1);
+        h.key_press(egui::Key::PageDown);
+        h.run_steps(1);
+        let sel = h.state().net_ui.canvas.selected.clone().expect("element ales");
+        let x_of = |h: &egui_kittest::Harness<'_, HidroApp>| h.state().project.as_ref().unwrap().network_schema.iter().find(|e| e.id == sel).map(|e| e.x).unwrap();
+        let x0 = x_of(&h);
+        h.key_press(egui::Key::ArrowRight);
+        h.run_steps(2);
+        assert!((x_of(&h) - x0 - 10.0).abs() < 1e-6, "elementul trebuie să se mute cu 10");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     /// Cum arată focusul de la tastatură pe butoane (verificare vizuală).
     #[test]
     fn focus_ring_snapshot() {
@@ -1356,7 +1662,7 @@ mod snapshots {
         h.get_by_role_and_label(egui::accesskit::Role::Button, "Hidrant").focus();
         h.run_steps(2);
         h.render().unwrap().save(out.join("focus-tool-button.png")).unwrap();
-        h.get_by_label_contains("Acasă").focus();
+        h.get_by_role_and_label(egui::accesskit::Role::Button, "⌂  Acasă").focus();
         h.run_steps(2);
         h.render().unwrap().save(out.join("focus-std-button.png")).unwrap();
         let _ = std::fs::remove_dir_all(dir);

@@ -1,6 +1,20 @@
 {
+  "a11y": {
+    "invalidNumber": "Introdu un număr (ex. 1,5)",
+    "skip": "Sari la conținut"
+  },
   "help": {
-    "title": "Scurtături de tastatură",
+    "a11yTitle": "Accesibilitate",
+    "uiSize": "Dimensiunea interfeței",
+    "contrast": "Contrast ridicat",
+    "motion": "Mișcare redusă (fără animații)",
+    "reset": "Resetare",
+    "zoomHint": "Și Ctrl/⌘ + sau − schimbă dimensiunea interfeței.",
+    "planMove": "Deplasare (cu un element ales: îl mută; cu Alt: deplasează vederea)",
+    "planCycle": "Elementul următor / anterior",
+    "planTools": "Instrument: V Select, L Tronson, R Rezervor, S Sursă, H Hidrant, G Cămin G., A Cămin A., U Subsistem, T Text, E Radieră",
+    "planEnter": "Cu un instrument de desen: pune elementul la cruce (la Tronson: început, apoi sfârșit); pe un subsistem: intră în el",
+    "title": "Ajutor și accesibilitate",
     "close": "Închide",
     "general": "General",
     "tab": "Mută focusul la elementul următor / anterior",

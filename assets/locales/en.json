@@ -1,6 +1,20 @@
 {
+  "a11y": {
+    "invalidNumber": "Enter a number (e.g. 1.5)",
+    "skip": "Skip to content"
+  },
   "help": {
-    "title": "Keyboard shortcuts",
+    "a11yTitle": "Accessibility",
+    "uiSize": "Interface size",
+    "contrast": "High contrast",
+    "motion": "Reduce motion (no animations)",
+    "reset": "Reset",
+    "zoomHint": "Ctrl/⌘ + or − also changes the interface size.",
+    "planMove": "Pan (with an element selected: moves it; with Alt: pans the view)",
+    "planCycle": "Next / previous element",
+    "planTools": "Tool: V Select, L Segment, R Reservoir, S Source, H Hydrant, G Gravity manhole, A Air manhole, U Subsystem, T Text, E Eraser",
+    "planEnter": "With a drawing tool: places the element at the crosshair (Segment: start, then end); on a subsystem: enters it",
+    "title": "Help and accessibility",
     "close": "Close",
     "general": "General",
     "tab": "Move focus to the next / previous element",

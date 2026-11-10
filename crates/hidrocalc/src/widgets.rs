@@ -151,7 +151,7 @@ pub fn alert(ui: &mut Ui, text: &str, danger: bool) {
     let (bar, bg) = if danger { (p.danger, p.danger_soft) } else { (p.warning, p.warning_soft) };
     let resp = egui::Frame::new().fill(bg).corner_radius(CornerRadius::same(8)).inner_margin(Margin { left: 16, right: 14, top: 10, bottom: 10 }).show(ui, |ui| {
         ui.set_width(ui.available_width());
-        ui.add(egui::Label::new(RichText::new(text).color(p.ink).size(13.0)).wrap());
+        ui.add(egui::Label::new(RichText::new(format!("⚠  {text}")).color(p.ink).size(13.0)).wrap());
     });
     let r = resp.response.rect;
     ui.painter().rect_filled(egui::Rect::from_min_size(r.min, egui::vec2(3.0, r.height())), CornerRadius { nw: 8, sw: 8, ne: 0, se: 0 }, bar);
@@ -226,12 +226,12 @@ fn field_label(ui: &mut Ui, label: &str, tooltip: Option<&str>, computed: bool) 
 fn help_icon(ui: &mut Ui, tip: &str) {
     let p = pal(ui);
     // `click` o face focusabilă cu Tab; explicația apare și când are focus, nu doar la hover.
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::click());
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
     let hot = resp.hovered() || resp.has_focus();
     let c = rect.center();
     let (line, fill) = if hot { (p.accent, p.accent_soft) } else { (p.muted, Color32::TRANSPARENT) };
-    ui.painter().circle(c, 7.0, fill, Stroke::new(1.0, line));
-    ui.painter().text(c, egui::Align2::CENTER_CENTER, "?", egui::FontId::proportional(10.5), line);
+    ui.painter().circle(c, 8.5, fill, Stroke::new(1.2, line));
+    ui.painter().text(c, egui::Align2::CENTER_CENTER, "?", egui::FontId::proportional(12.0), line);
     focus_ring(ui, &resp, 8);
     describe(&resp, egui::Role::Button, tip);
     let resp = resp.on_hover_cursor(egui::CursorIcon::Help);
@@ -304,6 +304,18 @@ fn num_input_labelled(ui: &mut Ui, id: egui::Id, value: &mut f64, unit: Option<&
     }
     if let Some(l) = label {
         resp = resp.labelled_by(l);
+    }
+    // Text care nu e (încă) un număr: contur roșu + mesaj, nu doar resetare tăcută la 0.
+    let t_trim = buf.trim();
+    let intermediate = matches!(t_trim, "-" | "+" | "." | "," | "-." | "-,");
+    let invalid = !t_trim.is_empty() && !intermediate && parse_decimal(&buf).is_none();
+    if invalid {
+        let p = pal(ui);
+        ui.painter().rect_stroke(resp.rect, CornerRadius::same(7), Stroke::new(1.5, p.danger), egui::StrokeKind::Inside);
+        if label.is_some() {
+            let msg = ui.ctx().data(|d| d.get_temp::<String>(egui::Id::NULL.with("invalid_number_msg"))).unwrap_or_else(|| "Introdu un număr".into());
+            ui.label(RichText::new(format!("⚠ {msg}")).size(11.5).color(p.danger));
+        }
     }
     let mut changed = false;
     if resp.changed() {
@@ -391,7 +403,7 @@ pub fn computed_field(ui: &mut Ui, label: &str, text: &str, unit: Option<&str>, 
                 ui.set_width(ui.available_width());
                 ui.spacing_mut().interact_size.y = 26.0;
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(text).monospace().color(if danger { p.danger } else { p.ink2 }));
+                    ui.label(RichText::new(if danger { format!("⚠ {text}") } else { text.to_string() }).monospace().color(if danger { p.danger } else { p.ink2 }));
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| unit_suffix(ui, unit));
                 });
             });
@@ -487,7 +499,7 @@ pub fn tool_button_icon(ui: &mut Ui, text: &str, selected: bool, icon: impl FnOn
 /// Buton pătrat cu pictogramă desenată de `icon` (painter, dreptunghi, culoare, fundal), cu fundal discret.
 pub fn icon_button(ui: &mut Ui, tip: &str, icon: impl FnOnce(&egui::Painter, egui::Rect, Color32, Color32)) -> egui::Response {
     let p = pal(ui);
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(32.0, 28.0), egui::Sense::click());
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(34.0, 30.0), egui::Sense::click());
     let fill = if resp.hovered() { p.accent_soft } else { p.panel2 };
     ui.painter().rect_filled(rect, CornerRadius::same(8), fill);
     icon(ui.painter(), rect, if resp.hovered() { p.accent } else { p.ink2 }, fill);
@@ -511,6 +523,34 @@ pub fn paint_theme_icon(p: &egui::Painter, r: egui::Rect, col: Color32, bg: Colo
         p.circle_filled(c, 6.2, col);
         p.circle_filled(c + egui::vec2(3.2, -2.6), 5.4, bg);
     }
+}
+
+/// „✕” care cere confirmare: primul click îl face „Confirmă ștergerea” (3 secunde), al doilea șterge.
+pub fn confirm_delete(ui: &mut Ui, id: egui::Id, tip: &str, confirm_text: &str) -> bool {
+    let p = pal(ui);
+    let now = ui.input(|i| i.time);
+    let armed_at = ui.data(|d| d.get_temp::<f64>(id));
+    let armed = armed_at.is_some_and(|t| now - t < 3.0);
+    if armed_at.is_some() && !armed {
+        ui.data_mut(|d| d.remove::<f64>(id));
+    }
+    let text = if armed { RichText::new(confirm_text).size(12.0).color(Color32::WHITE) } else { RichText::new("✕").color(p.muted) };
+    let mut b = egui::Button::new(text);
+    b = if armed { b.fill(p.danger).stroke(Stroke::NONE) } else { b.frame(false) };
+    let r = ui.add(b);
+    describe(&r, egui::Role::Button, if armed { confirm_text } else { tip });
+    let r = r.on_hover_text(tip);
+    if armed {
+        ui.ctx().request_repaint_after(std::time::Duration::from_millis(500));
+    }
+    if r.clicked() {
+        if armed {
+            ui.data_mut(|d| d.remove::<f64>(id));
+            return true;
+        }
+        ui.data_mut(|d| d.insert_temp(id, now));
+    }
+    false
 }
 
 pub fn primary_button(ui: &mut Ui, text: &str) -> egui::Response {
@@ -545,10 +585,12 @@ pub fn step_nav(_ui: &mut Ui, _t: &crate::i18n::I18n, _back: Option<u32>, _next:
     None
 }
 
-/// Conținut centrat cu lățime maximă (echivalentul `max-w-* mx-auto`).
+/// Conținut centrat cu lățime maximă (echivalentul `max-w-* mx-auto`). Lățimea e „fluidă”:
+/// maximul primit se mărește cu 30% (până la 1320), ca să nu sară conținutul când bara laterală
+/// se ascunde sau se arată, ci să umple spațiul.
 pub fn centered<R>(ui: &mut Ui, max_width: f32, add: impl FnOnce(&mut Ui) -> R) -> R {
     let avail = ui.available_width();
-    let w = avail.min(max_width);
+    let w = avail.min((max_width * 1.3).min(1320.0));
     let pad = ((avail - w) / 2.0).max(0.0);
     ui.horizontal_top(|ui| {
         ui.add_space(pad);
@@ -630,5 +672,25 @@ mod interaction_tests {
         input.type_text("1,5");
         h.run();
         assert_eq!(*h.state(), 1.5, "0 + „1,5” tastat → 01,5 = 1.5");
+    }
+}
+
+#[cfg(test)]
+mod a11y_tests {
+    use egui_kittest::{kittest::Queryable, Harness};
+
+    #[test]
+    fn invalid_number_shows_an_inline_message() {
+        let mut h = Harness::new_ui_state(
+            |ui, v: &mut f64| {
+                super::num_field(ui, "Debit", v, Some("l/s"), None);
+            },
+            0.0_f64,
+        );
+        let input = h.get_by_role(egui::accesskit::Role::TextInput);
+        input.focus();
+        input.type_text("abc");
+        h.run();
+        assert!(h.query_by_label_contains("Introdu un număr").is_some(), "lipsește mesajul de eroare lângă câmp");
     }
 }

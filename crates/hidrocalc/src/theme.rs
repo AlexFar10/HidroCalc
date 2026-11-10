@@ -76,12 +76,79 @@ pub const DARK: Palette = Palette {
     cat_rezervor: hex(0xA4AFBF),
 };
 
-pub fn palette(ctx: &egui::Context) -> &'static Palette {
-    if ctx.global_style().visuals.dark_mode {
-        &DARK
-    } else {
-        &LIGHT
+/// Varianta cu contrast ridicat (WCAG AAA ≥ 7:1 pentru text).
+pub const LIGHT_HC: Palette = Palette {
+    bg: hex(0xEEF2F7),
+    panel: hex(0xFFFFFF),
+    panel2: hex(0xE3EAF2),
+    border: hex(0x6B7A8C),
+    border_strong: hex(0x3F4D5E),
+    ink: hex(0x05090F),
+    ink2: hex(0x111A26),
+    muted: hex(0x2E3B4B),
+    accent: hex(0x0B3A73),
+    accent_fg: hex(0xFFFFFF),
+    accent_soft: hex(0xCFE0F5),
+    accent_ring: hex(0x0B3A73),
+    danger: hex(0x8A1F1C),
+    danger_soft: hex(0xF7D9D8),
+    warning: hex(0x6B4A00),
+    warning_soft: hex(0xF6E8C4),
+    teal: hex(0x0B3A73),
+    cat_capture: hex(0x2E3B4B),
+    cat_treat: hex(0x2E3B4B),
+    cat_rezervor: hex(0x2E3B4B),
+};
+
+pub const DARK_HC: Palette = Palette {
+    bg: hex(0x000000),
+    panel: hex(0x0A0E14),
+    panel2: hex(0x141B25),
+    border: hex(0x8A99AD),
+    border_strong: hex(0xB8C4D4),
+    ink: hex(0xFFFFFF),
+    ink2: hex(0xEEF2F7),
+    muted: hex(0xC9D3E0),
+    accent: hex(0xA8CCFF),
+    accent_fg: hex(0x000000),
+    accent_soft: hex(0x1B3354),
+    accent_ring: hex(0xA8CCFF),
+    danger: hex(0xFF9A94),
+    danger_soft: hex(0x3A1210),
+    warning: hex(0xFFD27A),
+    warning_soft: hex(0x3A2A08),
+    teal: hex(0xA8CCFF),
+    cat_capture: hex(0xC9D3E0),
+    cat_treat: hex(0xC9D3E0),
+    cat_rezervor: hex(0xC9D3E0),
+};
+
+static HIGH_CONTRAST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn pal_for(dark: bool) -> &'static Palette {
+    match (dark, HIGH_CONTRAST.load(std::sync::atomic::Ordering::Relaxed)) {
+        (false, false) => &LIGHT,
+        (true, false) => &DARK,
+        (false, true) => &LIGHT_HC,
+        (true, true) => &DARK_HC,
     }
+}
+
+pub fn palette(ctx: &egui::Context) -> &'static Palette {
+    pal_for(ctx.global_style().visuals.dark_mode)
+}
+
+/// Pornește/oprește contrastul ridicat: schimbă paleta și refă stilurile ambelor teme.
+pub fn set_high_contrast(ctx: &egui::Context, on: bool) {
+    HIGH_CONTRAST.store(on, std::sync::atomic::Ordering::Relaxed);
+    ctx.set_visuals_of(egui::Theme::Light, visuals(pal_for(false), false));
+    ctx.set_visuals_of(egui::Theme::Dark, visuals(pal_for(true), true));
+    ctx.request_repaint();
+}
+
+/// Animațiile (hover, deschideri) pot fi oprite pentru cine preferă mișcare redusă.
+pub fn set_reduce_motion(ctx: &egui::Context, on: bool) {
+    ctx.all_styles_mut(|s| s.animation_time = if on { 0.0 } else { 1.0 / 12.0 });
 }
 
 fn visuals(p: &Palette, dark: bool) -> Visuals {
@@ -159,18 +226,63 @@ fn install_fonts(ctx: &egui::Context) {
 
 pub fn install(ctx: &egui::Context) {
     install_fonts(ctx);
-    ctx.set_visuals_of(egui::Theme::Light, visuals(&LIGHT, false));
-    ctx.set_visuals_of(egui::Theme::Dark, visuals(&DARK, true));
+    ctx.set_visuals_of(egui::Theme::Light, visuals(pal_for(false), false));
+    ctx.set_visuals_of(egui::Theme::Dark, visuals(pal_for(true), true));
     ctx.all_styles_mut(|s| {
         s.interaction.tooltip_delay = 0.1;
         s.interaction.show_tooltips_only_when_still = false;
         s.spacing.item_spacing = egui::vec2(8.0, 6.0);
         s.spacing.button_padding = egui::vec2(12.0, 6.0);
-        s.spacing.interact_size.y = 28.0;
+        s.spacing.interact_size.y = 30.0;
+        s.spacing.icon_width = 18.0;
+        s.spacing.icon_spacing = 8.0;
         s.text_styles.insert(egui::TextStyle::Body, egui::FontId::proportional(14.5));
         s.text_styles.insert(egui::TextStyle::Button, egui::FontId::proportional(14.5));
         s.text_styles.insert(egui::TextStyle::Small, egui::FontId::proportional(12.0));
         s.text_styles.insert(egui::TextStyle::Monospace, egui::FontId::monospace(13.0));
         s.text_styles.insert(egui::TextStyle::Heading, egui::FontId::proportional(22.0));
     });
+}
+
+#[cfg(test)]
+mod contrast_tests {
+    use super::*;
+
+    fn lin(c: u8) -> f64 {
+        let s = c as f64 / 255.0;
+        if s <= 0.03928 { s / 12.92 } else { ((s + 0.055) / 1.055).powf(2.4) }
+    }
+    fn lum(c: Color32) -> f64 {
+        0.2126 * lin(c.r()) + 0.7152 * lin(c.g()) + 0.0722 * lin(c.b())
+    }
+    /// Raportul de contrast WCAG între două culori.
+    fn ratio(a: Color32, b: Color32) -> f64 {
+        let (x, y) = (lum(a), lum(b));
+        (x.max(y) + 0.05) / (x.min(y) + 0.05)
+    }
+
+    #[test]
+    fn palettes_meet_wcag_contrast() {
+        // (paletă, nume, minim pentru text)
+        for (p, name, min) in [(&LIGHT, "light", 4.5), (&DARK, "dark", 4.5), (&LIGHT_HC, "light-hc", 7.0), (&DARK_HC, "dark-hc", 7.0)] {
+            let pairs = [
+                ("ink/panel", p.ink, p.panel),
+                ("ink/bg", p.ink, p.bg),
+                ("ink2/panel", p.ink2, p.panel),
+                ("muted/panel", p.muted, p.panel),
+                ("muted/bg", p.muted, p.bg),
+                ("muted/panel2", p.muted, p.panel2),
+                ("accent/panel", p.accent, p.panel),
+                ("accent/bg", p.accent, p.bg),
+                ("accent_fg/accent", p.accent_fg, p.accent),
+                ("danger/panel", p.danger, p.panel),
+                ("warning/panel", p.warning, p.panel),
+                ("ink/accent_soft", p.ink, p.accent_soft),
+            ];
+            for (n, fg, bg) in pairs {
+                let r = ratio(fg, bg);
+                assert!(r >= min, "{name}: {n} are contrast {r:.2} (< {min})");
+            }
+        }
+    }
 }
