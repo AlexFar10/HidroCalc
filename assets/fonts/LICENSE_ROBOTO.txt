@@ -1,0 +1,3 @@
+Roboto (Regular, Medium) și Roboto Mono (Regular) — Copyright 2011 The Roboto Project Authors
+(https://github.com/googlefonts/roboto). Licențiate sub Apache License, Version 2.0:
+http://www.apache.org/licenses/LICENSE-2.0

@@ -99,7 +99,7 @@ Toate funcțiile aplicației React/Tauri sunt migrate.
 | Cote teren automate din DEM și din puncte topo (CSV/GPX/KML, Stereo 70) | ✅ |
 | Vedere 3D: teren DEM, conducte la adâncimea de pozare, noduri, etichete | ✅ (fără modele .gltf) |
 | Pasul 9: indicatori, grafice, tabel rezultate | ✅ |
-| Exporturi: PDF raport, breviar PDF, memoriu .docx din șablon, cantități .xlsx (implicit sau din șablon), DXF, PNG | ✅ |
+| Exporturi (pasul 9, pe secțiuni, individual sau multiplu): JSON proiect, PNG/DXF plan 2D, PNG/DXF/GLB/STL 3D; documentele scrise urmează | ✅ |
 
 Diferențe față de versiunea React: vederea 3D e desenată cu egui (fără modele .gltf, cu modele procedurale);
 PDF-urile au diacritice (fonturi încorporate); captura PNG are rezoluția ecranului.

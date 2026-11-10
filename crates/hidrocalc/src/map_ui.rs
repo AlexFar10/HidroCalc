@@ -12,7 +12,7 @@ use serde_json::{json, Value};
 use std::sync::mpsc::{channel, Receiver};
 use std::time::Duration;
 
-const TOPO_COLOR: Color32 = Color32::from_rgb(0x15, 0x80, 0x3D);
+const TOPO_COLOR: Color32 = Color32::from_rgb(0x4E, 0x8F, 0x6E);
 
 // ─── Setări din `networkCanvasSettings` ──────────────────────────────────────
 
@@ -241,6 +241,8 @@ pub struct MapWindow {
     reverse: Option<Receiver<Option<Value>>>,
     crs: Option<Crs>,
     pub notice: Option<String>,
+    /// Centrul și transformarea vederii canvasului, actualizate la fiecare cadru de canvas.
+    pub view: Option<((f64, f64), View)>,
 }
 
 impl MapWindow {
@@ -273,58 +275,67 @@ impl MapWindow {
         }
     }
 
-    /// `view_center` = centrul vizualizării în coordonatele schemei (punctul ancorat).
-    pub fn ui(&mut self, ctx: &egui::Context, t: &I18n, p: &mut ProjectData, view_center: (f64, f64), live: View) {
+    /// Panoul hărții, afișat în bara laterală (în locul ferestrei plutitoare).
+    pub fn panel(&mut self, ui: &mut Ui, t: &I18n, p: &mut ProjectData) {
         if !self.open {
             return;
         }
-        let mut open = true;
-        egui::Window::new(t.t("native.mapTitle")).open(&mut open).resizable(false).default_width(360.0).show(ctx, |ui| {
-            self.anchor_section(ui, t, p, view_center);
-            if anchor(p).is_some() {
-                ui.separator();
-                self.display_section(ui, t, p, live);
-                ui.separator();
-                self.topo_section(ui, t, p);
-            }
-        });
-        self.open &= open;
+        let Some((center, live)) = self.view else { return };
+        ui.add_space(6.0);
+        self.anchor_section(ui, t, p, center);
+        if anchor(p).is_some() {
+            ui.add_space(10.0);
+            ui.separator();
+            ui.add_space(4.0);
+            self.display_section(ui, t, p, live);
+            ui.add_space(10.0);
+            ui.separator();
+            ui.add_space(4.0);
+            self.topo_section(ui, t, p);
+        }
+        ui.add_space(8.0);
     }
 
     fn anchor_section(&mut self, ui: &mut Ui, t: &I18n, p: &mut ProjectData, center: (f64, f64)) {
         let pl = pal(ui);
-        ui.label(RichText::new(t.t("native.mapSearch")).size(12.0).color(pl.muted));
+        ui.label(RichText::new(t.t("native.mapSearch")).size(12.5).color(pl.ink2));
+        let mut go = false;
         ui.horizontal(|ui| {
-            let lbl = ui.label("🔎").id;
-            let r = ui.add(egui::TextEdit::singleline(&mut self.query).hint_text("ex: Timișoara, Cluj-Napoca…").desired_width(240.0)).labelled_by(lbl);
-            let go = ui.add_enabled(self.search.is_none() && self.query.trim().len() >= 2, egui::Button::new(t.t("native.search"))).clicked()
-                || (r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)));
-            if go && self.query.trim().len() >= 2 {
-                let q = url_encode(self.query.trim());
-                self.results.clear();
-                self.error = None;
-                self.search = Some(spawn(ui.ctx(), move || {
-                    let d = get_json(&format!("https://nominatim.openstreetmap.org/search?q={q}&format=json&limit=5&addressdetails=0"))?;
-                    Ok(d.as_array()
-                        .map(|a| {
-                            a.iter()
-                                .filter_map(|r| {
-                                    let lat = r.get("lat")?.as_str()?.parse().ok()?;
-                                    let lon = r.get("lon")?.as_str()?.parse().ok()?;
-                                    Some((r.get("display_name")?.as_str()?.to_string(), lat, lon))
-                                })
-                                .collect()
-                        })
-                        .unwrap_or_default())
-                }));
-            }
-            if self.search.is_some() {
-                ui.spinner();
+            let r = ui.add(egui::TextEdit::singleline(&mut self.query).hint_text("ex: Timișoara…").desired_width(ui.available_width() - 78.0));
+            go = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            if ui.add_enabled(self.search.is_none() && self.query.trim().len() >= 2, egui::Button::new(t.t("native.search"))).clicked() {
+                go = true;
             }
         });
+        if go && self.query.trim().len() >= 2 {
+            let q = url_encode(self.query.trim());
+            self.results.clear();
+            self.error = None;
+            self.search = Some(spawn(ui.ctx(), move || {
+                let d = get_json(&format!("https://nominatim.openstreetmap.org/search?q={q}&format=json&limit=5&addressdetails=0"))?;
+                Ok(d.as_array()
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|r| {
+                                let lat = r.get("lat")?.as_str()?.parse().ok()?;
+                                let lon = r.get("lon")?.as_str()?.parse().ok()?;
+                                Some((r.get("display_name")?.as_str()?.to_string(), lat, lon))
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default())
+            }));
+        }
+        if self.search.is_some() {
+            ui.add_space(4.0);
+            ui.spinner();
+        }
+        // Sugestiile: rânduri pe toată lățimea, cu același aspect ca un câmp.
         let mut picked = None;
         for (name, lat, lng) in &self.results {
-            if ui.add(egui::Button::new(RichText::new(name).size(12.0)).frame(false).wrap()).clicked() {
+            ui.add_space(3.0);
+            let b = egui::Button::new(RichText::new(name).size(12.0).color(pl.ink)).wrap().min_size(egui::vec2(ui.available_width(), 0.0));
+            if ui.add(b).clicked() {
                 picked = Some((name.clone(), *lat, *lng));
             }
         }
@@ -334,7 +345,7 @@ impl MapWindow {
             self.query = name.split(',').take(2).collect::<Vec<_>>().join(",");
             self.results.clear();
         }
-        ui.add_space(4.0);
+        ui.add_space(8.0);
         ui.columns(2, |c| {
             w::text_field(&mut c[0], &t.t("native.latitude"), &mut self.lat, "45.748900");
             w::text_field(&mut c[1], &t.t("native.longitude"), &mut self.lng, "21.208700");
@@ -342,33 +353,39 @@ impl MapWindow {
         if let Some(e) = &self.error {
             ui.label(RichText::new(e).size(12.0).color(pl.danger));
         }
-        ui.horizontal(|ui| {
-            if w::primary_button(ui, &t.t("native.mapConfirm")).clicked() {
-                match (w::parse_decimal(&self.lat), w::parse_decimal(&self.lng)) {
-                    (Some(lat), Some(lng)) if lat.abs() <= 90.0 && lng.abs() <= 180.0 => {
-                        let sr = crate::canvas::scale_ratio(p);
-                        let a = MapAnchor { lat, lng, world_x: center.0, world_y: center.1, tile_zoom: compute_tile_zoom(lat, sr) };
-                        set(p, "mapAnchor", serde_json::to_value(a).unwrap_or(Value::Null));
-                        set(p, "mapLocationInfo", Value::Null);
-                        self.error = None;
-                        self.reverse = Some(spawn(ui.ctx(), move || reverse_geocode(lat, lng)));
-                    }
-                    _ => self.error = Some(t.t("native.invalidCoords")),
+        ui.add_space(8.0);
+        let full = egui::vec2(ui.available_width(), 28.0);
+        if ui.add_sized(full, egui::Button::new(RichText::new(t.t("native.mapConfirm")).color(pl.accent_fg)).fill(pl.accent).stroke(egui::Stroke::NONE)).clicked() {
+            match (w::parse_decimal(&self.lat), w::parse_decimal(&self.lng)) {
+                (Some(lat), Some(lng)) if lat.abs() <= 90.0 && lng.abs() <= 180.0 => {
+                    let sr = crate::canvas::scale_ratio(p);
+                    let a = MapAnchor { lat, lng, world_x: center.0, world_y: center.1, tile_zoom: compute_tile_zoom(lat, sr) };
+                    set(p, "mapAnchor", serde_json::to_value(a).unwrap_or(Value::Null));
+                    set(p, "mapLocationInfo", Value::Null);
+                    self.error = None;
+                    self.reverse = Some(spawn(ui.ctx(), move || reverse_geocode(lat, lng)));
                 }
+                _ => self.error = Some(t.t("native.invalidCoords")),
             }
-            if anchor(p).is_some() && w::danger_button(ui, &t.t("native.mapDisable"), false).clicked() {
+        }
+        if anchor(p).is_some() {
+            ui.add_space(4.0);
+            if ui.add_sized(full, egui::Button::new(RichText::new(t.t("native.mapDisable")).color(pl.ink2))).clicked() {
                 set(p, "mapAnchor", Value::Null);
                 set(p, "mapLocationInfo", Value::Null);
             }
-        });
+        }
     }
 
     fn display_section(&mut self, ui: &mut Ui, t: &I18n, p: &mut ProjectData, live: View) {
-        ui.horizontal(|ui| {
-            ui.label(t.t("native.mapLock"));
-            for (key, label) in [("mapLockPan", "native.lockPan"), ("mapLockZoom", "native.lockZoom"), ("mapLockRotation", "native.lockRotation")] {
-                let mut on = flag(p, key);
-                if ui.toggle_value(&mut on, t.t(label)).changed() {
+        let pl = pal(ui);
+        ui.label(RichText::new(t.t("native.mapLock")).size(12.5).color(pl.ink2));
+        ui.add_space(2.0);
+        ui.columns(3, |c| {
+            for (i, (key, label)) in [("mapLockPan", "native.lockPan"), ("mapLockZoom", "native.lockZoom"), ("mapLockRotation", "native.lockRotation")].into_iter().enumerate() {
+                let on = flag(p, key);
+                if w::tool_button_w(&mut c[i], &t.t(label), on).clicked() {
+                    let on = !on;
                     set(p, key, json!(on));
                     let pan_or_zoom = flag(p, "mapLockPan") || flag(p, "mapLockZoom");
                     if on && key != "mapLockRotation" {
@@ -380,44 +397,48 @@ impl MapWindow {
                 }
             }
         });
+        ui.add_space(10.0);
+        // Glisoarele ocupă toată lățimea; valoarea apare în dreapta lor.
+        ui.spacing_mut().slider_width = (ui.available_width() - 64.0).max(60.0);
         let mut op = opacity(p);
-        ui.horizontal(|ui| {
-            let l = ui.label(t.t("native.mapOpacity")).id;
-            if ui.add(egui::Slider::new(&mut op, 0.0..=1.0).custom_formatter(|v, _| format!("{:.0}%", v * 100.0))).labelled_by(l).changed() {
-                set(p, "mapOpacity", json!(op));
-            }
-        });
+        ui.label(RichText::new(t.t("native.mapOpacity")).size(12.5).color(pl.ink2));
+        if ui.add(egui::Slider::new(&mut op, 0.0..=1.0).custom_formatter(|v, _| format!("{:.0}%", v * 100.0))).changed() {
+            set(p, "mapOpacity", json!(op));
+        }
+        ui.add_space(8.0);
         let mut rot = rotation(p);
+        let unlocked = !flag(p, "mapLockRotation");
         ui.horizontal(|ui| {
-            let l = ui.label(t.t("native.mapRotation")).id;
-            let unlocked = !flag(p, "mapLockRotation");
-            if ui.add_enabled(unlocked, egui::Slider::new(&mut rot, -180.0..=180.0).suffix("°").step_by(0.5)).labelled_by(l).changed() {
-                set(p, "mapRotation", json!(rot));
-            }
-            if ui.add_enabled(unlocked, egui::Button::new(t.t("canvas.resetRotation")).small()).clicked() {
-                set(p, "mapRotation", json!(0.0));
-            }
+            ui.label(RichText::new(t.t("native.mapRotation")).size(12.5).color(pl.ink2));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.add_enabled(unlocked, egui::Button::new(RichText::new(t.t("canvas.resetRotation")).size(12.0)).small()).clicked() {
+                    set(p, "mapRotation", json!(0.0));
+                }
+            });
         });
+        if ui.add_enabled(unlocked, egui::Slider::new(&mut rot, -180.0..=180.0).suffix("°").step_by(0.5)).changed() {
+            set(p, "mapRotation", json!(rot));
+        }
+        ui.add_space(10.0);
         let mut auto = auto_terrain(p);
-        if ui.checkbox(&mut auto, t.t("terrain.autoToggle")).changed() {
+        if ui.checkbox(&mut auto, RichText::new(t.t("terrain.autoToggle")).size(12.5)).changed() {
             set(p, "autoTerrainCota", json!(auto));
         }
-        ui.label(RichText::new(t.t("terrain.attribution")).size(10.5).color(pal(ui).muted));
-        let mut depth = hidro_core::export::quantities::pipe_depth(p);
-        ui.horizontal(|ui| {
-            let l = ui.label(t.t("native.pipeDepth")).id;
-            if ui.add(egui::DragValue::new(&mut depth).range(0.3..=5.0).speed(0.05).suffix(" m")).labelled_by(l).changed() {
-                set(p, "pipeDepth", json!(depth));
-            }
-        });
+        ui.add(egui::Label::new(RichText::new(t.t("terrain.attribution")).size(11.0).color(pl.muted)).wrap());
+        ui.add_space(8.0);
+        let mut depth = hidro_core::export::pipe_depth(p);
+        if w::num_field(ui, &t.t("native.pipeDepth"), &mut depth, Some("m"), None) {
+            set(p, "pipeDepth", json!(depth.clamp(0.3, 5.0)));
+        }
     }
 
     fn topo_section(&mut self, ui: &mut Ui, t: &I18n, p: &mut ProjectData) {
         let pl = pal(ui);
         let pts = topo_points(p);
-        ui.label(RichText::new(t.t("topo.title")).strong());
+        w::section_title(ui, &t.t("topo.title"));
         ui.add(egui::Label::new(RichText::new(t.t("topo.formats")).size(11.0).color(pl.muted)).wrap());
         ui.label(RichText::new(t.tf("native.topoCount", &[("n", &pts.len().to_string())])).size(12.0).color(pl.muted));
+        ui.add_space(6.0);
         let crs_opts = [
             (Crs::Auto, "topo.crsAuto"),
             (Crs::Stereo70, "topo.crsStereo70"),
@@ -425,30 +446,26 @@ impl MapWindow {
             (Crs::Wgs84, "topo.crsWgs84"),
         ];
         let cur = self.crs.unwrap_or(Crs::Auto);
-        ui.horizontal(|ui| {
-            let l = ui.label(t.t("topo.crs")).id;
-            let shown = crs_opts.iter().find(|(c, _)| *c == cur).map(|(_, k)| t.t(k)).unwrap_or_default();
-            let r = egui::ComboBox::from_id_salt("crs").selected_text(shown).show_ui(ui, |ui| {
-                for (c, k) in crs_opts {
-                    if ui.selectable_label(cur == c, t.t(k)).clicked() {
-                        self.crs = Some(c);
-                    }
-                }
-            });
-            let _ = r.response.labelled_by(l);
-        });
+        let options: Vec<(String, String)> = crs_opts.iter().map(|(c, k)| (format!("{}", *c as u8), t.t(k))).collect();
+        let mut sel = format!("{}", cur as u8);
+        if w::combo(ui, &t.t("topo.crs"), &mut sel, &options) {
+            if let Some((c, _)) = crs_opts.iter().find(|(c, _)| format!("{}", *c as u8) == sel) {
+                self.crs = Some(*c);
+            }
+        }
+        ui.add_space(6.0);
         let mut radius = topo_radius(p);
-        ui.horizontal(|ui| {
-            let l = ui.label(t.t("topo.radius")).id;
-            if ui.add(egui::DragValue::new(&mut radius).range(0.5..=100.0).speed(0.5).suffix(" m")).labelled_by(l).changed() {
-                set(p, "topoRadius", json!(radius));
-            }
-        });
-        ui.horizontal(|ui| {
-            if w::secondary_button(ui, &t.t("topo.chooseFile")).clicked() {
-                self.import_topo(t, p);
-            }
-            if !pts.is_empty() && w::danger_button(ui, &t.t("topo.clear"), false).clicked() {
+        if w::num_field(ui, &t.t("topo.radius"), &mut radius, Some("m"), None) {
+            set(p, "topoRadius", json!(radius.clamp(0.5, 100.0)));
+        }
+        ui.add_space(8.0);
+        let full = egui::vec2(ui.available_width(), 28.0);
+        if ui.add_sized(full, egui::Button::new(RichText::new(t.t("topo.chooseFile")).color(pl.ink2))).clicked() {
+            self.import_topo(t, p);
+        }
+        if !pts.is_empty() {
+            ui.add_space(4.0);
+            if ui.add_sized(full, egui::Button::new(RichText::new(t.t("topo.clear")).color(pl.ink2))).clicked() {
                 set(p, "topoPoints", Value::Null);
                 // Cotele preluate din topo devin din nou eligibile pentru DEM.
                 for s in &mut p.network_sections {
@@ -462,9 +479,10 @@ impl MapWindow {
                     }
                 }
             }
-        });
+        }
         if let Some(n) = &self.notice {
-            ui.label(RichText::new(n).size(12.0).color(pl.ink2));
+            ui.add_space(4.0);
+            ui.add(egui::Label::new(RichText::new(n).size(12.0).color(pl.ink2)).wrap());
         }
     }
 

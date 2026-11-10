@@ -2,7 +2,7 @@
 
 use crate::charts;
 use crate::i18n::I18n;
-use crate::widgets::{self as w, fmt, pal, CardSize};
+use crate::widgets::{self as w, fmt, pal};
 use eframe::egui::{self, RichText, Stroke, Ui};
 use hidro_core::calculations::network::{NetworkSection, PEHD_DIAMETERS};
 use hidro_core::model::ProjectData;
@@ -29,19 +29,50 @@ pub struct NetworkUi {
     pub show_3d: bool,
     /// Ecran complet: zona de desen ocupă toată fereastra (fără bara laterală și pași).
     pub expanded: bool,
-    /// Export cerut din interfață; îl execută aplicația după desenarea cadrului.
-    pub export: Option<ExportKind>,
+    /// Exporturile bifate în panoul de export (pasul 9).
+    pub export_sel: std::collections::BTreeSet<ExportId>,
+    /// Export cerut din panou (unul sau mai multe); îl execută aplicația.
+    pub export_req: Option<Vec<ExportId>>,
+    /// Cerere de salvare imediată a proiectului.
+    pub save_now: bool,
+    /// Un export rulează (butoanele se blochează).
+    pub export_busy: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExportKind {
-    Dxf,
-    Xlsx,
-    Pdf,
-    Breviar,
-    Memoriu,
-    /// Alegerea unui alt șablon (true = Word, false = Excel), apoi exportul.
-    PickTemplate(bool),
+/// Tipurile de export din panoul de la pasul 9.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ExportId {
+    Json,
+    Png2d,
+    Dxf2d,
+    Png3d,
+    Dxf3d,
+    Glb,
+    Stl,
+}
+
+impl ExportId {
+    /// Imaginile se obțin din captura ecranului (pasul 8), deci cer o procedură specială.
+    pub fn needs_capture(self) -> bool {
+        matches!(self, ExportId::Png2d | ExportId::Png3d)
+    }
+    pub fn ext(self) -> &'static str {
+        match self {
+            ExportId::Json => "json",
+            ExportId::Png2d | ExportId::Png3d => "png",
+            ExportId::Dxf2d | ExportId::Dxf3d => "dxf",
+            ExportId::Glb => "glb",
+            ExportId::Stl => "stl",
+        }
+    }
+    /// Sufixul numelui de fișier (după numele proiectului).
+    pub fn file_suffix(self) -> &'static str {
+        match self {
+            ExportId::Json => "",
+            ExportId::Png2d | ExportId::Dxf2d => " - plan 2D",
+            _ => " - 3D",
+        }
+    }
 }
 
 const AREA_ID: &str = "hidrocalc-area-height";
@@ -249,7 +280,7 @@ fn results_table(ui: &mut Ui, t: &I18n, p: &mut ProjectData, st: Option<&mut Net
                         ui.label(RichText::new(fmt(v, d)).monospace().color(pl.muted));
                     }
                     ui.label(RichText::new(if s.q_ie > 0.0 { fmt(s.q_ie, 3) } else { "-".into() }).monospace().color(pl.muted));
-                    ui.label(RichText::new(fmt(s.q_c, 3)).monospace().color(pl.accent));
+                    ui.label(RichText::new(fmt(s.q_c, 3)).monospace().color(pl.ink));
                     for (v, d) in [(s.length, 1), (s.d_calc, 2), (s.d_std_int, 1)] {
                         ui.label(RichText::new(fmt(v, d)).monospace().color(pl.muted));
                     }
@@ -352,8 +383,8 @@ fn inspector(ui: &mut Ui, t: &I18n, p: &mut ProjectData, st: &mut NetworkUi) {
             ui.horizontal(|ui| {
                 ui.label(RichText::new(&label).size(12.0).color(pl.ink2).strong());
                 let badge = match (src.as_deref(), val.is_some()) {
-                    (Some("dem"), true) => Some((t.t("terrain.demBadge"), pl.warning)),
-                    (Some("topo"), true) => Some((t.t("terrain.topoBadge"), charts::GREEN)),
+                    (Some("dem"), true) => Some((t.t("terrain.demBadge"), pl.muted)),
+                    (Some("topo"), true) => Some((t.t("terrain.topoBadge"), pl.muted)),
                     (_, true) => Some((t.t("terrain.manualBadge"), pl.muted)),
                     _ => None,
                 };
@@ -378,12 +409,9 @@ pub fn step8(ui: &mut Ui, t: &I18n, p: &mut ProjectData, st: &mut NetworkUi) -> 
     w::step_header(ui, &title, &t.t("native.step8Subtitle"));
 
     ui.horizontal(|ui| {
-        for (three, key) in [(false, "view3d.mode2D"), (true, "view3d.mode3D")] {
-            let sel = st.show_3d == three;
-            let txt = RichText::new(t.t(key)).strong().color(if sel { pl.accent_fg } else { pl.muted });
-            if ui.add(egui::Button::new(txt).fill(if sel { pl.accent } else { pl.panel })).clicked() {
-                st.show_3d = three;
-            }
+        let labels = [t.t("view3d.mode2D"), t.t("view3d.mode3D")];
+        if let Some(i) = w::segmented(ui, &[labels[0].as_str(), labels[1].as_str()], st.show_3d as usize) {
+            st.show_3d = i == 1;
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let key = if st.expanded { "native.exitFullscreen" } else { "native.fullscreen" };
@@ -408,9 +436,6 @@ pub fn step8(ui: &mut Ui, t: &I18n, p: &mut ProjectData, st: &mut NetworkUi) -> 
             if !st.expanded {
                 resize_grip(ui, t);
             }
-            if std::mem::take(&mut st.canvas.export_dxf) {
-                st.export = Some(ExportKind::Dxf);
-            }
             ui.label(RichText::new(t.t("native.canvasHint")).size(11.0).color(pl.muted));
         }
     });
@@ -434,9 +459,9 @@ pub fn step8(ui: &mut Ui, t: &I18n, p: &mut ProjectData, st: &mut NetworkUi) -> 
             w::card(ui, |ui| {
                 w::section_title(ui, &t.t("step8.tabConstants"));
                 ui.columns(3, |col| {
-                    w::num_field(&mut col[0], &t.t("step8.roughness"), &mut c.roughness, Some("m"), Some("Rugozitatea absolută a peretelui conductei (k), folosită în Darcy-Weisbach. Pentru PEHD: ~0.0001 m."));
-                    w::num_field(&mut col[1], &t.t("step8.viscosity"), &mut c.viscosity, Some("m²/s"), Some("Vâscozitatea cinematică a apei, folosită la numărul Reynolds. La 10°C: 1.31×10⁻⁶ m²/s."));
-                    w::num_field(&mut col[2], &t.t("step8.economicVelocity"), &mut c.economic_velocity, Some("m/s"), Some("Viteza economică folosită pentru predimensionarea diametrului D_calc. Sursă: NP 133 (uzual 0.7–1.5 m/s)."));
+                    w::num_field(&mut col[0], &t.t("step8.roughness"), &mut c.roughness, Some("m"), Some(t.tip("Rugozitatea absolută a peretelui conductei (k), folosită în Darcy-Weisbach. Pentru PEHD: ~0.0001 m.").as_str()));
+                    w::num_field(&mut col[1], &t.t("step8.viscosity"), &mut c.viscosity, Some("m²/s"), Some(t.tip("Vâscozitatea cinematică a apei, folosită la numărul Reynolds. La 10°C: 1.31×10⁻⁶ m²/s.").as_str()));
+                    w::num_field(&mut col[2], &t.t("step8.economicVelocity"), &mut c.economic_velocity, Some("m/s"), Some(t.tip("Viteza economică folosită pentru predimensionarea diametrului D_calc. Sursă: NP 133 (uzual 0.7–1.5 m/s).").as_str()));
                 });
             });
         }
@@ -451,7 +476,7 @@ pub fn step8(ui: &mut Ui, t: &I18n, p: &mut ProjectData, st: &mut NetworkUi) -> 
                     for d in PEHD_DIAMETERS {
                         ui.label(RichText::new(fmt(d.d_ext, 0)).monospace());
                         ui.label(RichText::new(fmt(d.thickness(), 1)).monospace().color(pl.muted));
-                        ui.label(RichText::new(fmt(d.d_int, 1)).monospace().color(pl.accent));
+                        ui.label(RichText::new(fmt(d.d_int, 1)).monospace().color(pl.ink));
                         ui.end_row();
                     }
                 });
@@ -533,40 +558,64 @@ fn scale_ratio(p: &ProjectData) -> f64 {
 
 pub fn step9(ui: &mut Ui, t: &I18n, p: &mut ProjectData, r: &ProjectResults, net: &mut NetworkUi) -> Option<u32> {
     let pl = pal(ui);
-    w::centered(ui, 1100.0, |ui| {
+    w::centered(ui, 960.0, |ui| {
         w::step_header(ui, &t.t("step9.title"), &t.t("step9.subtitle"));
         let secs = &p.network_sections;
         let total_len: f64 = secs.iter().map(|s| s.length).sum();
         let total_h: f64 = secs.iter().map(|s| s.h_tot).sum();
-        ui.columns(4, |c| {
-            w::result_card(&mut c[0], &t.t("step9.maxHourlyFlow"), r.water_demand.q_s_or_max, "m³/h", true, CardSize::Large);
-            w::result_card(&mut c[1], &t.t("step9.reservoirVolume"), r.reservoir.v_total, "m³", true, CardSize::Large);
-            w::result_card_dec(&mut c[2], &t.t("step9.totalNetworkLength"), total_len, "m", false, CardSize::Large, 1);
-            w::result_card_dec(&mut c[3], &t.t("step9.sectionsCount"), secs.len() as f64, "", false, CardSize::Large, 0);
-        });
-        ui.add_space(8.0);
-        ui.columns(3, |c| {
-            w::result_card_dec(&mut c[0], &t.t("step9.totalNetworkLoss"), total_h, "m", false, CardSize::Normal, 4);
-            w::result_card(&mut c[1], &t.t("step9.qZiMax"), r.water_demand.q_s_zi_max, "m³/zi", false, CardSize::Normal);
-            w::result_card(&mut c[2], &t.t("step9.qOrMaxLs"), r.water_demand.q_s_or_max_ls, "l/s", false, CardSize::Normal);
+        w::card(ui, |ui| {
+            ui.columns(4, |c| {
+                w::metric_centered(&mut c[0], &t.t("step9.maxHourlyFlow"), r.water_demand.q_s_or_max, "m³/h", 3);
+                w::metric_centered(&mut c[1], &t.t("step9.reservoirVolume"), r.reservoir.v_total, "m³", 3);
+                w::metric_centered(&mut c[2], &t.t("step9.totalNetworkLength"), total_len, "m", 1);
+                w::metric_centered(&mut c[3], &t.t("step9.sectionsCount"), secs.len() as f64, "", 0);
+            });
+            ui.add_space(14.0);
+            ui.columns(4, |c| {
+                w::metric_centered(&mut c[0], &t.t("step9.totalNetworkLoss"), total_h, "m", 4);
+                w::metric_centered(&mut c[1], &t.t("step9.qZiMax"), r.water_demand.q_s_zi_max, "m³/zi", 3);
+                w::metric_centered(&mut c[2], &t.t("step9.qOrMaxLs"), r.water_demand.q_s_or_max_ls, "l/s", 3);
+            });
         });
         ui.add_space(12.0);
 
         if secs.is_empty() {
+            // Fără tronsoane: arătăm ce va conține pagina (blocat), ca utilizatorul să știe ce poate face aici.
             let mut go = None;
-            w::card(ui, |ui| {
-                ui.vertical_centered(|ui| {
-                    ui.add_space(10.0);
-                    ui.label(RichText::new(t.t("native.noSections")).strong());
-                    ui.label(RichText::new(t.t("native.noSectionsHint")).color(pl.muted));
-                    ui.add_space(6.0);
-                    if w::primary_button(ui, &t.t("native.goToStep8")).clicked() {
-                        go = Some(8);
-                    }
-                    ui.add_space(10.0);
+            egui::Frame::new().fill(pl.accent_soft).corner_radius(egui::CornerRadius::same(10)).inner_margin(egui::Margin::symmetric(16, 12)).show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.horizontal(|ui| {
+                    ui.vertical(|ui| {
+                        ui.label(RichText::new(t.t("native.noSections")).color(pl.ink));
+                        ui.label(RichText::new(t.t("native.noSectionsHint")).size(12.5).color(pl.muted));
+                    });
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if w::primary_button(ui, &t.t("native.goToStep8")).clicked() {
+                            go = Some(8);
+                        }
+                    });
                 });
             });
-            return go.or_else(|| w::step_nav(ui, t, Some(8), None));
+            ui.add_space(10.0);
+            let placeholder = |ui: &mut Ui, title: String, height: f32| {
+                w::card(ui, |ui| {
+                    ui.label(RichText::new(title).color(pl.muted));
+                    let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), egui::Sense::hover());
+                    ui.painter().rect_stroke(rect, egui::CornerRadius::same(8), Stroke::new(1.0, pl.border), egui::StrokeKind::Inside);
+                    ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, t.t("exp.afterSections"), egui::FontId::proportional(12.5), pl.muted);
+                });
+            };
+            ui.columns(2, |c| {
+                placeholder(&mut c[0], t.t("step9.chartFlows"), 150.0);
+                placeholder(&mut c[1], t.t("step9.chartHeadloss"), 150.0);
+            });
+            ui.add_space(10.0);
+            placeholder(ui, t.t("step9.chartVelocity"), 120.0);
+            ui.add_space(10.0);
+            placeholder(ui, t.t("step8.hydraulicResults"), 90.0);
+            ui.add_space(10.0);
+            export_panel(ui, t, p, net);
+            return go;
         }
 
         let labels: Vec<String> = secs.iter().map(|s| s.name.clone()).collect();
@@ -604,60 +653,118 @@ pub fn step9(ui: &mut Ui, t: &I18n, p: &mut ProjectData, r: &ProjectResults, net
             results_table(ui, t, p, None);
         });
         ui.add_space(10.0);
-        documentation(ui, t, net);
+        ui.add_space(10.0);
+        export_panel(ui, t, p, net);
         w::step_nav(ui, t, Some(8), None)
     })
 }
 
-/// Panoul „Documentație” (echivalentul `DocumentationPanel.tsx`).
-fn documentation(ui: &mut Ui, t: &I18n, net: &mut NetworkUi) {
+/// Panoul de export (pasul 9): secțiuni, bifare pentru export multiplu, rânduri blocate
+/// când exportul nu e disponibil.
+fn export_panel(ui: &mut Ui, t: &I18n, p: &ProjectData, st: &mut NetworkUi) {
+    #[derive(Clone, Copy, PartialEq)]
+    enum Avail {
+        Yes,
+        NeedsSchema,
+    }
     let pl = pal(ui);
+    let has_schema = !p.network_schema.is_empty();
+    let drawing = if has_schema { Avail::Yes } else { Avail::NeedsSchema };
+    // (secțiune, id, cheie text, disponibilitate)
+    let sections: [(&str, Vec<(ExportId, &str, Avail)>); 3] = [
+        ("exp.sectionProject", vec![(ExportId::Json, "json", Avail::Yes)]),
+        (
+            "exp.sectionDrawing",
+            vec![
+                (ExportId::Png2d, "png2d", drawing),
+                (ExportId::Dxf2d, "dxf2d", drawing),
+                (ExportId::Png3d, "png3d", drawing),
+                (ExportId::Dxf3d, "dxf3d", drawing),
+                (ExportId::Glb, "glb", drawing),
+                (ExportId::Stl, "stl", drawing),
+            ],
+        ),
+        ("exp.sectionDocuments", vec![]),
+    ];
+    let available: Vec<ExportId> = sections.iter().flat_map(|(_, rows)| rows.iter()).filter(|(_, _, a)| *a == Avail::Yes).map(|(id, _, _)| *id).collect();
+    st.export_sel.retain(|id| available.contains(id));
+    let busy = st.export_busy;
+
     w::card(ui, |ui| {
-        ui.label(RichText::new(t.t("docs.title")).size(15.0).strong());
-        ui.label(RichText::new(t.t("docs.subtitle")).size(12.0).color(pl.muted));
-        ui.add_space(8.0);
-        let mut pick: Option<bool> = None;
-        let mut row = |ui: &mut Ui, title: String, desc: String, ready: bool, template: Option<bool>| -> bool {
-            let mut clicked = false;
-            ui.horizontal(|ui| {
-                ui.vertical(|ui| {
-                    ui.set_width((ui.available_width() - 160.0).max(200.0));
-                    ui.label(RichText::new(title).strong());
-                    ui.add(egui::Label::new(RichText::new(desc).size(12.0).color(pl.muted)).wrap());
-                });
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ready {
-                        clicked = w::primary_button(ui, &t.t("docs.generate")).clicked();
-                        if let Some(word) = template {
-                            if w::secondary_button(ui, &t.t("docs.pickTemplate")).on_hover_text(t.t("docs.pickTemplateTip")).clicked() {
-                                pick = Some(word);
-                            }
-                        }
-                    } else {
-                        ui.label(RichText::new(t.t("native.notMigratedTitle")).size(11.5).italics().color(pl.muted));
+        ui.horizontal(|ui| {
+            ui.vertical(|ui| {
+                ui.label(RichText::new(t.t("exp.title")).size(16.0).color(pl.ink));
+                ui.label(RichText::new(t.t("exp.hint")).size(12.0).color(pl.muted));
+            });
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let n = st.export_sel.len();
+                ui.add_enabled_ui(n > 0 && !busy, |ui| {
+                    if w::primary_button(ui, &t.tf("exp.exportSelected", &[("n", &n.to_string())])).clicked() {
+                        st.export_req = Some(st.export_sel.iter().copied().collect());
                     }
                 });
+                let all = !available.is_empty() && st.export_sel.len() == available.len();
+                if w::secondary_button(ui, &t.t(if all { "exp.clear" } else { "exp.selectAll" })).clicked() {
+                    if all {
+                        st.export_sel.clear();
+                    } else {
+                        st.export_sel = available.iter().copied().collect();
+                    }
+                }
             });
-            ui.separator();
-            clicked
-        };
-        if row(ui, t.t("docs.memoriu.title"), t.t("native.memoriuDesc"), true, Some(true)) {
-            net.export = Some(ExportKind::Memoriu);
+        });
+        if busy {
+            ui.label(RichText::new(t.t("exp.busy")).size(12.0).color(pl.accent));
         }
-        if row(ui, t.t("docs.cantitati.title"), t.t("docs.cantitati.desc"), true, Some(false)) {
-            net.export = Some(ExportKind::Xlsx);
-        }
-        if row(ui, t.t("docs.breviar.title"), t.t("docs.breviar.desc"), true, None) {
-            net.export = Some(ExportKind::Breviar);
-        }
-        if row(ui, t.t("nav.exportPdf"), t.t("native.pdfDesc"), true, None) {
-            net.export = Some(ExportKind::Pdf);
-        }
-        if row(ui, t.t("native.dxfTitle"), t.t("native.dxfDesc"), true, None) {
-            net.export = Some(ExportKind::Dxf);
-        }
-        if let Some(word) = pick {
-            net.export = Some(ExportKind::PickTemplate(word));
+
+        for (title, rows) in &sections {
+            ui.add_space(14.0);
+            w::section_title(ui, &t.t(title));
+            if *title == "exp.sectionProject" {
+                ui.horizontal(|ui| {
+                    ui.add_space(36.0);
+                    ui.vertical(|ui| {
+                        ui.label(RichText::new(t.t("exp.save")).color(pl.ink));
+                        ui.label(RichText::new(t.t("exp.saveDesc")).size(12.0).color(pl.muted));
+                    });
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if w::secondary_button(ui, &t.t("exp.saveBtn")).clicked() {
+                            st.save_now = true;
+                        }
+                    });
+                });
+                ui.add_space(6.0);
+            }
+            for (id, key, avail) in rows {
+                let on = *avail == Avail::Yes;
+                ui.horizontal(|ui| {
+                    ui.add_enabled_ui(on && !busy, |ui| {
+                        let mut sel = st.export_sel.contains(id);
+                        if ui.checkbox(&mut sel, "").changed() {
+                            if sel {
+                                st.export_sel.insert(*id);
+                            } else {
+                                st.export_sel.remove(id);
+                            }
+                        }
+                    });
+                    ui.add_enabled_ui(on, |ui| {
+                        ui.vertical(|ui| {
+                            ui.label(RichText::new(t.t(&format!("exp.{key}"))).color(pl.ink));
+                            ui.label(RichText::new(t.t(&format!("exp.{key}Desc"))).size(12.0).color(pl.muted));
+                        });
+                    });
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.add_enabled_ui(on && !busy, |ui| {
+                            if w::secondary_button(ui, &t.t("exp.exportOne")).clicked() {
+                                st.export_req = Some(vec![*id]);
+                            }
+                        });
+                        ui.label(RichText::new(format!(".{}", id.ext())).monospace().size(12.0).color(pl.muted));
+                    });
+                });
+                ui.add_space(4.0);
+            }
         }
     });
 }

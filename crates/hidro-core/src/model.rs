@@ -410,6 +410,34 @@ impl ProjectData {
         self.network_sections.iter().map(|s| s.length).sum()
     }
 
+    /// Documentul de export JSON: metadate (format, versiunea aplicației, data) + proiectul întreg.
+    /// Formatul are versiune, ca să putem evolua fișierele fără a le strica pe cele vechi.
+    pub fn to_export_json(&self, app_version: &str, exported_at: &str) -> Value {
+        serde_json::json!({
+            "hidrocalc": { "format": EXPORT_FORMAT, "appVersion": app_version, "exportedAt": exported_at },
+            "project": self,
+        })
+    }
+
+    /// Citește un fișier exportat: documentul nou (cu metadate) sau fișierul vechi, în care
+    /// proiectul era scris direct. Întoarce eroarea ca `ExportImportError`.
+    pub fn from_export_value(v: Value) -> Result<ProjectData, ExportImportError> {
+        let project = match v.get("hidrocalc") {
+            Some(meta) => {
+                let format = meta.get("format").and_then(Value::as_u64).unwrap_or(0);
+                if format > EXPORT_FORMAT as u64 {
+                    return Err(ExportImportError::NewerFormat(format));
+                }
+                v.get("project").cloned().ok_or(ExportImportError::Invalid)?
+            }
+            None => v,
+        };
+        if !Self::looks_valid(&project) {
+            return Err(ExportImportError::Invalid);
+        }
+        serde_json::from_value(project).map_err(|_| ExportImportError::Invalid)
+    }
+
     /// Validare a unui fișier importat (echivalentul `isValidProjectData` din aplicația React).
     pub fn looks_valid(v: &Value) -> bool {
         let Some(o) = v.as_object() else { return false };
@@ -471,5 +499,50 @@ mod tests {
         assert_eq!(back["campNou"]["a"], true);
         assert_eq!(back["networkSchema"][0]["type"], "tronson");
         assert_eq!(back["reservoir"]["dimPlatformaBetonatal"], 3.0);
+    }
+}
+
+/// Versiunea formatului de export JSON (se mărește când structura documentului se schimbă).
+pub const EXPORT_FORMAT: u32 = 1;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExportImportError {
+    /// Fișierul nu este un proiect HidroCalc valid.
+    Invalid,
+    /// Fișier făcut de o versiune mai nouă a aplicației (numărul formatului).
+    NewerFormat(u64),
+}
+
+#[cfg(test)]
+mod export_tests {
+    use super::*;
+
+    fn sample() -> ProjectData {
+        ProjectData::new("id-1".into(), "2026-11-10T10:00:00.000Z".into(), "2026-11-10".into())
+    }
+
+    #[test]
+    fn export_document_roundtrips_and_has_metadata() {
+        let p = sample();
+        let doc = p.to_export_json("0.1.0", "2026-11-10T10:00:00Z");
+        assert_eq!(doc["hidrocalc"]["format"], 1);
+        assert_eq!(doc["hidrocalc"]["appVersion"], "0.1.0");
+        assert_eq!(ProjectData::from_export_value(doc).unwrap(), p);
+    }
+
+    #[test]
+    fn legacy_flat_file_still_imports() {
+        let p = sample();
+        let flat = serde_json::to_value(&p).unwrap();
+        assert_eq!(ProjectData::from_export_value(flat).unwrap(), p);
+    }
+
+    #[test]
+    fn newer_format_and_garbage_are_rejected() {
+        let mut doc = sample().to_export_json("9.9.9", "x");
+        doc["hidrocalc"]["format"] = serde_json::json!(99);
+        assert_eq!(ProjectData::from_export_value(doc), Err(ExportImportError::NewerFormat(99)));
+        assert_eq!(ProjectData::from_export_value(serde_json::json!({"a": 1})), Err(ExportImportError::Invalid));
+        assert_eq!(ProjectData::from_export_value(serde_json::json!({"hidrocalc": {"format": 1}})), Err(ExportImportError::Invalid));
     }
 }

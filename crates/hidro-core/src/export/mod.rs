@@ -1,21 +1,7 @@
-//! Exporturi independente de interfață: date pentru documente, cantități, DXF, XLSX.
-//!
-//! Textele traductibile se cer printr-un [`Tr`] (cheie + parametri), ca modulul
-//! să nu depindă de sistemul de traduceri al aplicației.
+//! Exporturi independente de interfață (deocamdată: DXF). Documentele scrise
+//! (memoriu, liste de cantități, breviar) au fost scoase și urmează să fie refăcute.
 
-pub mod breviar;
-pub mod document;
-pub mod docx;
 pub mod dxf;
-pub mod pdf;
-pub mod quantities;
-pub mod report;
-pub mod schema_pdf;
-pub mod xlsx;
-pub mod xlsx_template;
-
-/// Funcție de traducere: `(cheie, [(parametru, valoare)])` → text.
-pub type Tr<'a> = &'a dyn Fn(&str, &[(&str, &str)]) -> String;
 
 /// Nume de fișier sigur (fără caracterele interzise pe Windows/macOS).
 pub fn safe_file_name(name: &str, fallback: &str) -> String {
@@ -23,7 +9,10 @@ pub fn safe_file_name(name: &str, fallback: &str) -> String {
     n.chars().map(|c| if r#"/\:*?"<>|"#.contains(c) { '_' } else { c }).collect()
 }
 
-pub(crate) fn round(v: f64, d: i32) -> f64 {
-    let m = 10f64.powi(d);
-    (v * m).round() / m
+/// Adâncimea de pozare a conductelor (m), din setările canvasului; implicit `DEFAULT_PIPE_DEPTH`.
+pub fn pipe_depth(p: &crate::model::ProjectData) -> f64 {
+    p.network_canvas_settings
+        .get("pipeDepth")
+        .and_then(serde_json::Value::as_f64)
+        .unwrap_or(crate::defaults::DEFAULT_PIPE_DEPTH)
 }

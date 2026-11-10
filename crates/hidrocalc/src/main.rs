@@ -5,6 +5,7 @@ mod app;
 mod canvas;
 mod charts;
 mod db;
+mod export3d;
 mod i18n;
 mod map_ui;
 mod mesh3d;

@@ -28,18 +28,55 @@ const UNDO_MAX: usize = 60;
 const fn rgb(c: u32) -> Color32 {
     Color32::from_rgb((c >> 16) as u8, (c >> 8) as u8, c as u8)
 }
-const C_TRONSON: Color32 = rgb(0x1A1A1A);
-const C_TR_LABEL: Color32 = rgb(0xDC2626);
-const C_RED: Color32 = rgb(0xDC2626);
-const C_CAMIN_G: Color32 = rgb(0x1D4ED8);
-const C_CAMIN_A: Color32 = rgb(0x3B82F6);
-const C_SELECTED: Color32 = rgb(0xF59E0B);
-const C_GRID: Color32 = rgb(0xE5E7EB);
-const C_SNAP: Color32 = rgb(0x3B82F6);
-const C_SUB_FILL: Color32 = rgb(0xF0FDFA);
-const C_SUB_BRD: Color32 = rgb(0x0D9488);
-const C_SUB_TEXT: Color32 = rgb(0x0F766E);
-const C_Q: Color32 = rgb(0x2563EB);
+thread_local! {
+    /// Tema curentă a canvasului (setată la începutul desenării).
+    static DARK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+fn dark() -> bool {
+    DARK.with(|d| d.get())
+}
+fn themed(light: u32, dark_c: u32) -> Color32 {
+    rgb(if dark() { dark_c } else { light })
+}
+fn c_bg() -> Color32 {
+    themed(0xFAFBFD, 0x10161D)
+}
+fn c_tronson() -> Color32 {
+    themed(0x1A1A1A, 0xD9DEE6)
+}
+fn c_tr_label() -> Color32 {
+    themed(0xDC2626, 0xE58B87)
+}
+fn c_red() -> Color32 {
+    themed(0xDC2626, 0xE58B87)
+}
+fn c_camin_g() -> Color32 {
+    themed(0x1D4ED8, 0x6EA0E8)
+}
+fn c_camin_a() -> Color32 {
+    themed(0x3B82F6, 0x8DB6F0)
+}
+fn c_selected() -> Color32 {
+    themed(0xF59E0B, 0xF2B84B)
+}
+fn c_grid() -> Color32 {
+    themed(0xE5E9F0, 0x232C38)
+}
+fn c_snap() -> Color32 {
+    themed(0x3B82F6, 0x6EA0E8)
+}
+fn c_sub_fill() -> Color32 {
+    themed(0xF0FDFA, 0x132629)
+}
+fn c_sub_brd() -> Color32 {
+    themed(0x0D9488, 0x3FB5A8)
+}
+fn c_sub_text() -> Color32 {
+    themed(0x0F766E, 0x5CCFC2)
+}
+fn c_q() -> Color32 {
+    themed(0x2563EB, 0x7FB0F0)
+}
 
 /// Culorile predefinite pentru tronsoane (cheile de traducere din `step8.*`).
 pub const COLOR_PRESETS: &[(&str, &str)] = &[
@@ -96,6 +133,60 @@ impl Tool {
     }
 }
 
+/// Pictograma unui instrument (≈14 px, centrată în `c`).
+fn paint_tool_icon(p: &egui::Painter, c: Pos2, tool: Tool, col: Color32) {
+    let s = Stroke::new(1.4, col);
+    let at = |x: f32, y: f32| c + Vec2::new(x, y);
+    match tool {
+        Tool::Select => {
+            // cursor
+            p.add(egui::Shape::convex_polygon(vec![at(-4.0, -6.0), at(-4.0, 5.0), at(-1.0, 2.0), at(2.0, 7.0), at(4.0, 5.5), at(1.0, 0.5), at(5.0, 0.5)], col, Stroke::NONE));
+        }
+        Tool::Tronson => {
+            p.line_segment([at(-6.0, 5.0), at(6.0, -5.0)], s);
+            p.circle_filled(at(-6.0, 5.0), 2.0, col);
+            p.circle_filled(at(6.0, -5.0), 2.0, col);
+        }
+        Tool::Rezervor => {
+            p.rect_stroke(Rect::from_center_size(c, Vec2::new(12.0, 11.0)), 2.0, s, egui::StrokeKind::Middle);
+            p.line_segment([at(-6.0, -0.5), at(6.0, -0.5)], Stroke::new(1.0, col));
+            p.line_segment([at(-4.0, 2.5), at(4.0, 2.5)], Stroke::new(1.0, col));
+        }
+        Tool::Sursa => {
+            // picătură
+            p.add(egui::Shape::convex_polygon(vec![at(0.0, -7.0), at(-4.0, 0.0), at(-3.0, 3.5), at(0.0, 5.5), at(3.0, 3.5), at(4.0, 0.0)], col, Stroke::NONE));
+        }
+        Tool::Hidrant => {
+            p.rect_filled(Rect::from_center_size(at(0.0, 1.0), Vec2::new(5.0, 10.0)), 1.0, col);
+            p.circle_filled(at(0.0, -5.0), 3.0, col);
+            p.line_segment([at(-6.0, 0.0), at(6.0, 0.0)], Stroke::new(2.0, col));
+        }
+        Tool::CaminGrav => {
+            p.circle_stroke(c, 6.0, s);
+            p.line_segment([at(0.0, -2.5), at(0.0, 3.0)], Stroke::new(1.2, col));
+            p.line_segment([at(-2.5, 1.0), at(0.0, 3.5)], Stroke::new(1.2, col));
+            p.line_segment([at(2.5, 1.0), at(0.0, 3.5)], Stroke::new(1.2, col));
+        }
+        Tool::CaminAer => {
+            p.circle_stroke(c, 6.0, s);
+            p.circle_filled(c, 2.0, col);
+        }
+        Tool::Subsistem => {
+            let r = Rect::from_center_size(c, Vec2::new(13.0, 10.0));
+            for (a, b) in [(r.left_top(), r.right_top()), (r.right_top(), r.right_bottom()), (r.right_bottom(), r.left_bottom()), (r.left_bottom(), r.left_top())] {
+                p.extend(egui::Shape::dashed_line(&[a, b], Stroke::new(1.3, col), 3.0, 2.0));
+            }
+        }
+        Tool::Text => {
+            p.text(c, egui::Align2::CENTER_CENTER, "T", egui::FontId::proportional(15.0), col);
+        }
+        Tool::Eraser => {
+            p.add(egui::Shape::convex_polygon(vec![at(-6.0, 2.0), at(0.0, -5.0), at(6.0, 0.0), at(0.0, 7.0)], Color32::TRANSPARENT, s));
+            p.line_segment([at(-2.5, 5.5), at(3.0, -1.0)], Stroke::new(1.0, col));
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Hit {
     Start,
@@ -126,15 +217,18 @@ pub struct CanvasUi {
     pending_undo: Option<Vec<SchemaElement>>,
     fitted: bool,
     /// Cerere de export DXF din bara de unelte (preluată de pasul 8).
-    pub export_dxf: bool,
     tiles: Option<crate::tiles::TileCache>,
     pub map: crate::map_ui::MapWindow,
     last_rect: Rect,
     /// Captura PNG în curs: ascunde indicatorii de interfață și așteaptă imaginea ecranului.
     capturing: bool,
+    /// Cadre rămase în modul „captură” înainte de a cere imaginea.
+    png_pending: u8,
     png_rx: Option<std::sync::mpsc::Receiver<std::sync::Arc<egui::ColorImage>>>,
     /// Mesaj pentru utilizator (text, eroare), preluat de aplicație ca notificare.
     pub notice: Option<(String, bool)>,
+    /// PNG-ul gata (sau eroarea), preluat de aplicație pentru salvare.
+    pub png_ready: Option<Result<Vec<u8>, String>>,
 }
 
 impl Default for CanvasUi {
@@ -149,13 +243,14 @@ impl Default for CanvasUi {
             active_sub: None,
             pending_undo: None,
             fitted: false,
-            export_dxf: false,
             tiles: None,
             map: Default::default(),
             last_rect: Rect::NOTHING,
             capturing: false,
+            png_pending: 0,
             png_rx: None,
             notice: None,
+            png_ready: None,
         }
     }
 }
@@ -185,7 +280,9 @@ pub fn scale_ratio(p: &ProjectData) -> f64 {
 
 fn parse_color(s: Option<&str>) -> Option<Color32> {
     let h = s?.strip_prefix('#')?;
-    (h.len() == 6).then(|| u32::from_str_radix(h, 16).ok().map(rgb)).flatten()
+    let col = (h.len() == 6).then(|| u32::from_str_radix(h, 16).ok().map(rgb)).flatten()?;
+    // Culoarea implicită (aproape negru) urmează tema, ca să se vadă și pe fundal închis.
+    Some(if col == rgb(0x1A1A1A) { c_tronson() } else { col })
 }
 
 fn end_of(el: &SchemaElement) -> (f32, f32) {
@@ -450,8 +547,21 @@ impl CanvasUi {
         (world, false)
     }
 
-    /// Decupează zona canvas-ului din captura ecranului și o salvează ca PNG.
-    fn finish_png(&mut self, ctx: &egui::Context, t: &I18n, p: &ProjectData) {
+    /// Preia captura cerută cu `request_png` și o decupează pe zona canvasului.
+    fn finish_png(&mut self, ctx: &egui::Context) {
+        if self.png_pending > 0 {
+            self.png_pending -= 1;
+            ctx.request_repaint();
+            if self.png_pending > 0 {
+                return;
+            }
+            let (tx, rx) = std::sync::mpsc::channel();
+            ctx.request_screenshot(move |img| {
+                let _ = tx.send(img);
+            });
+            self.png_rx = Some(rx);
+            return;
+        }
         let Some(img) = self.png_rx.as_ref().and_then(|rx| rx.try_recv().ok()) else {
             if self.png_rx.is_some() {
                 ctx.request_repaint();
@@ -463,29 +573,32 @@ impl CanvasUi {
         let (rgba, w, h) = crop_rgba(&img, self.last_rect, ctx.pixels_per_point());
         let mut png = Vec::new();
         let enc = image::codecs::png::PngEncoder::new(&mut png);
-        if let Err(e) = image::ImageEncoder::write_image(enc, &rgba, w as u32, h as u32, image::ExtendedColorType::Rgba8) {
-            self.notice = Some((format!("{} {e}", t.t("docs.exportFailed")), true));
+        self.png_ready = Some(match image::ImageEncoder::write_image(enc, &rgba, w as u32, h as u32, image::ExtendedColorType::Rgba8) {
+            Ok(()) => Ok(png),
+            Err(e) => Err(e.to_string()),
+        });
+    }
+
+    /// Cere captura PNG a planului 2D: desenul trece întâi două cadre în modul „captură” (fără
+    /// selecție și indicatori, în tema luminoasă), apoi se ia imaginea.
+    pub fn request_png(&mut self, ctx: &egui::Context) {
+        if self.png_rx.is_some() || self.png_pending > 0 {
             return;
         }
-        let name = hidro_core::export::safe_file_name(&p.general.name, "schema-retea");
-        let Some(path) = rfd::FileDialog::new().add_filter("PNG", &["png"]).set_file_name(format!("{name}.png")).save_file() else { return };
-        self.notice = Some(match std::fs::write(&path, png) {
-            Ok(()) => (format!("PNG ✓  {}", path.display()), false),
-            Err(e) => (format!("{} {e}", t.t("docs.exportFailed")), true),
-        });
+        self.selected = None;
+        self.capturing = true;
+        self.png_pending = 2;
+        ctx.request_repaint();
     }
 
     /// `height` = înălțimea zonei de desen (reglabilă, vezi `network_ui::area_height`).
     pub fn ui(&mut self, ui: &mut Ui, t: &I18n, p: &mut ProjectData, height: f32) {
-        let ctx = ui.ctx().clone();
-        self.finish_png(&ctx, t, p);
+        self.finish_png(&ui.ctx().clone());
         self.map.poll(p);
         if crate::map_ui::anchor(p).is_some() {
             let ctx = ui.ctx().clone();
             self.tiles.get_or_insert_with(|| crate::tiles::TileCache::new(&ctx)).poll(&ctx);
         }
-        self.toolbar(ui, t, p);
-        ui.add_space(6.0);
         self.breadcrumb(ui, t, p);
         let (rect, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::click_and_drag());
         // La redimensionarea zonei, centrul vederii rămâne pe loc.
@@ -505,83 +618,85 @@ impl CanvasUi {
         // Ancora nouă se pune în punctul din centrul vederii curente.
         let center = self.to_world(rect.min, rect.center());
         let live = crate::map_ui::View { origin: rect.min, pan: self.pan, zoom: self.zoom };
-        self.map.ui(ui.ctx(), t, p, (center.x as f64, center.y as f64), live);
+        self.map.view = Some(((center.x as f64, center.y as f64), live));
     }
 
-    fn toolbar(&mut self, ui: &mut Ui, t: &I18n, p: &mut ProjectData) {
-        let pl = pal(ui);
-        ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing.x = 3.0;
-            for (tool, key) in Tool::ALL {
-                let sel = self.tool == tool;
-                let short = if matches!(tool, Tool::Rezervor | Tool::Sursa) { key.to_string() } else { format!("{key}Short") };
-                let txt = RichText::new(t.t(&format!("canvas.tools.{short}"))).size(12.0).color(if sel { pl.accent_fg } else { pl.ink2 });
-                if ui.add(egui::Button::new(txt).fill(if sel { pl.accent } else { pl.panel })).on_hover_text(t.t(&format!("canvas.tools.{key}"))).clicked() {
-                    self.tool = tool;
-                }
-            }
-            ui.separator();
-            if ui.add_enabled(!self.undo.is_empty(), egui::Button::new("↶")).on_hover_text(t.t("canvas.undoTitle")).clicked() {
-                self.undo_once(p);
-            }
-            if ui.button("−").on_hover_text(t.t("canvas.zoomOut")).clicked() {
-                self.zoom = (self.zoom / 1.25).max(ZOOM_MIN);
-            }
-            ui.label(RichText::new(format!("{:.0}%", self.zoom * 100.0)).monospace().size(11.5).color(pl.muted));
-            if ui.button("+").on_hover_text(t.t("canvas.zoomIn")).clicked() {
-                self.zoom = (self.zoom * 1.25).min(ZOOM_MAX);
-            }
-            if ui.button(t.t("native.fit")).clicked() {
-                self.fitted = false;
-            }
-            ui.separator();
-            let has_map = crate::map_ui::anchor(p).is_some();
-            if ui.add(egui::Button::new(format!("🗺 {}", t.t("native.mapButton"))).selected(has_map)).clicked() {
-                self.map.open_for(p);
-            }
-            if ui.button("DXF").on_hover_text(t.t("native.dxfDesc")).clicked() {
-                self.export_dxf = true;
-            }
-            if ui.add_enabled(self.png_rx.is_none(), egui::Button::new("PNG")).on_hover_text(t.t("native.pngDesc")).clicked() {
-                // Fără selecție și indicatori pe imagine; captura vine la cadrul următor.
-                self.selected = None;
-                self.capturing = true;
-                let (tx, rx) = std::sync::mpsc::channel();
-                ui.ctx().request_screenshot(move |img| {
-                    let _ = tx.send(img);
-                });
-                self.png_rx = Some(rx);
-            }
-        });
-        ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing.x = 6.0;
-            let sr = scale_ratio(p);
-            let opts: Vec<(String, String)> = SCALE_PRESETS.iter().map(|r| (format!("{r}"), format!("1:{r}"))).collect();
-            let mut cur = format!("{sr}");
-            let lbl = ui.label(RichText::new(t.t("canvas.scale")).size(12.0).color(pl.muted)).id;
-            if w::combo_labelled(ui, egui::Id::unique("scale"), &mut cur, &opts, 90.0, Some(lbl)) {
-                if let Ok(v) = cur.parse::<f64>() {
-                    set_setting(p, "scaleRatio", json!(v));
-                }
-            }
-            for (key, label) in [("gridVisible", "canvas.grid"), ("snapToGrid", "native.snapGrid"), ("snapToEndpoints", "canvas.snap")] {
-                let mut v = setting_bool(p, key, key == "snapToEndpoints");
-                if ui.checkbox(&mut v, t.t(label)).changed() {
-                    set_setting(p, key, json!(v));
-                }
-            }
-            if setting_bool(p, "gridVisible", false) || setting_bool(p, "snapToGrid", false) {
-                let gs = setting_f64(p, "gridSpacing", 10.0);
-                let opts: Vec<(String, String)> = GRID_SPACINGS.iter().map(|g| (format!("{g}"), format!("{g} m"))).collect();
-                let mut cur = format!("{gs}");
-                let lbl = ui.label(RichText::new(t.t("canvas.gridStep")).size(12.0).color(pl.muted)).id;
-                if w::combo_labelled(ui, egui::Id::unique("grid"), &mut cur, &opts, 70.0, Some(lbl)) {
-                    if let Ok(v) = cur.parse::<f64>() {
-                        set_setting(p, "gridSpacing", json!(v));
+    /// Paleta de desen din bara laterală (pasul 8, planul 2D).
+    pub fn palette(&mut self, ui: &mut Ui, t: &I18n, p: &mut ProjectData) {
+        ui.spacing_mut().item_spacing = Vec2::new(4.0, 4.0);
+
+        w::section_title(ui, &t.t("native.drawTools"));
+        for pair in Tool::ALL.chunks(2) {
+            ui.columns(2, |c| {
+                for (i, (tool, key)) in pair.iter().enumerate() {
+                    let short = if matches!(tool, Tool::Rezervor | Tool::Sursa) { key.to_string() } else { format!("{key}Short") };
+                    let tool = *tool;
+                    let resp = w::tool_button_icon(&mut c[i], &t.t(&format!("canvas.tools.{short}")), self.tool == tool, |p, ctr, col| paint_tool_icon(p, ctr, tool, col));
+                    if resp.on_hover_text(t.t(&format!("canvas.tools.{key}"))).clicked() {
+                        self.tool = tool;
                     }
                 }
+            });
+        }
+
+        ui.add_space(10.0);
+        w::section_title(ui, &t.t("native.viewTools"));
+        ui.columns(3, |c| {
+            let can_undo = !self.undo.is_empty();
+            if c[0].add_enabled_ui(can_undo, |ui| w::tool_button_w(ui, "↶", false)).inner.on_hover_text(t.t("canvas.undoTitle")).clicked() {
+                self.undo_once(p);
+            }
+            if w::tool_button_w(&mut c[1], "−", false).on_hover_text(t.t("canvas.zoomOut")).clicked() {
+                self.zoom = (self.zoom / 1.25).max(ZOOM_MIN);
+            }
+            if w::tool_button_w(&mut c[2], "+", false).on_hover_text(t.t("canvas.zoomIn")).clicked() {
+                self.zoom = (self.zoom * 1.25).min(ZOOM_MAX);
             }
         });
+        if w::tool_button_w(ui, &format!("{}  ·  {:.0}%", t.t("native.fit"), self.zoom * 100.0), false).clicked() {
+            self.fitted = false;
+        }
+
+        ui.add_space(10.0);
+        w::section_title(ui, &t.t("native.mapButton"));
+        if w::tool_button_w(ui, &t.t("native.mapButton"), self.map.open).clicked() {
+            if self.map.open {
+                self.map.open = false;
+            } else {
+                self.map.open_for(p);
+            }
+        }
+        // Setările hărții apar imediat sub buton.
+        self.map.panel(ui, t, p);
+
+        ui.add_space(10.0);
+        w::section_title(ui, &t.t("native.scaleGrid"));
+        let sr = scale_ratio(p);
+        let opts: Vec<(String, String)> = SCALE_PRESETS.iter().map(|r| (format!("{r}"), format!("1:{r}"))).collect();
+        let mut cur = format!("{sr}");
+        if w::combo(ui, &t.t("canvas.scale"), &mut cur, &opts) {
+            if let Ok(v) = cur.parse::<f64>() {
+                set_setting(p, "scaleRatio", json!(v));
+            }
+        }
+        ui.add_space(4.0);
+        for (key, label) in [("gridVisible", "canvas.grid"), ("snapToGrid", "native.snapGrid"), ("snapToEndpoints", "canvas.snap")] {
+            let mut v = setting_bool(p, key, key == "snapToEndpoints");
+            if ui.checkbox(&mut v, RichText::new(t.t(label)).size(12.5)).changed() {
+                set_setting(p, key, json!(v));
+            }
+        }
+        if setting_bool(p, "gridVisible", false) || setting_bool(p, "snapToGrid", false) {
+            ui.add_space(4.0);
+            let gs = setting_f64(p, "gridSpacing", 10.0);
+            let opts: Vec<(String, String)> = GRID_SPACINGS.iter().map(|g| (format!("{g}"), format!("{g} m"))).collect();
+            let mut cur = format!("{gs}");
+            if w::combo(ui, &t.t("canvas.gridStep"), &mut cur, &opts) {
+                if let Ok(v) = cur.parse::<f64>() {
+                    set_setting(p, "gridSpacing", json!(v));
+                }
+            }
+        }
     }
 
     fn breadcrumb(&mut self, ui: &mut Ui, t: &I18n, p: &ProjectData) {
@@ -592,7 +707,7 @@ impl CanvasUi {
             if ui.link(t.t("step8.mainSchema")).clicked() {
                 self.leave_sub();
             }
-            ui.label(RichText::new(format!("›  {label}")).strong().color(C_SUB_TEXT));
+            ui.label(RichText::new(format!("›  {label}")).strong().color(c_sub_text()));
             ui.label(RichText::new(t.t("canvas.subsistemHint")).size(11.0).color(pl.muted));
         });
     }
@@ -880,7 +995,8 @@ impl CanvasUi {
 
     fn paint(&mut self, ui: &mut Ui, rect: Rect, p: &mut ProjectData, resp: &egui::Response) {
         let painter = ui.painter_at(rect);
-        painter.rect_filled(rect, CornerRadius::same(10), Color32::WHITE);
+        DARK.with(|d| d.set(ui.visuals().dark_mode && !self.capturing));
+        painter.rect_filled(rect, CornerRadius::same(10), c_bg());
         let origin = rect.min;
         let view = crate::map_ui::View { origin, pan: self.pan, zoom: self.zoom };
         if let (Some(a), Some(tiles)) = (crate::map_ui::anchor(p), self.tiles.as_mut()) {
@@ -900,12 +1016,12 @@ impl CanvasUi {
                 let o = origin + self.pan;
                 let mut x = rect.left() + (o.x - rect.left()).rem_euclid(step);
                 while x < rect.right() {
-                    painter.line_segment([Pos2::new(x, rect.top()), Pos2::new(x, rect.bottom())], Stroke::new(1.0, C_GRID));
+                    painter.line_segment([Pos2::new(x, rect.top()), Pos2::new(x, rect.bottom())], Stroke::new(1.0, c_grid()));
                     x += step;
                 }
                 let mut y = rect.top() + (o.y - rect.top()).rem_euclid(step);
                 while y < rect.bottom() {
-                    painter.line_segment([Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)], Stroke::new(1.0, C_GRID));
+                    painter.line_segment([Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)], Stroke::new(1.0, c_grid()));
                     y += step;
                 }
             }
@@ -930,18 +1046,18 @@ impl CanvasUi {
             let off = Vec2::new(el.label_offset_x.unwrap_or(0.0) as f32, el.label_offset_y.unwrap_or(0.0) as f32);
             match el.kind {
                 SchemaKind::Tronson => {
-                    let base = parse_color(el.color.as_deref()).unwrap_or(C_TRONSON);
+                    let base = parse_color(el.color.as_deref()).unwrap_or(c_tronson());
                     let q = if self.active_sub.is_none() { el.label.as_deref().and_then(|l| q_by_name.get(l).copied()) } else { None };
-                    draw_tronson(&painter, el, sp, sc, vs, z, mpp, if sel { C_SELECTED } else { base }, sel, q, off);
+                    draw_tronson(&painter, el, sp, sc, vs, z, mpp, if sel { c_selected() } else { base }, sel, q, off);
                 }
                 SchemaKind::Rezervor | SchemaKind::Sursa => {
-                    let color = if sel { C_SELECTED } else if el.kind == SchemaKind::Rezervor { C_RED } else { C_TRONSON };
+                    let color = if sel { c_selected() } else if el.kind == SchemaKind::Rezervor { c_red() } else { c_tronson() };
                     let (w, h) = (el.w.map_or(BOX_W, |v| v as f32) * vs, el.h.map_or(BOX_H, |v| v as f32) * vs);
                     let r = Rect::from_min_max(sp(Pos2::new(x - w / 2.0, y - h)), sp(Pos2::new(x + w / 2.0, y)));
-                    painter.rect_filled(r, 0.0, Color32::WHITE);
+                    painter.rect_filled(r, 0.0, c_bg());
                     painter.rect_stroke(r, 0.0, Stroke::new(2.0 * sc, color), egui::StrokeKind::Middle);
                     let letter = if el.kind == SchemaKind::Rezervor { "R" } else { "S" };
-                    painter.text(r.center(), Align2::CENTER_CENTER, letter, FontId::proportional((h * 0.55 * z).max(4.0)), C_TRONSON);
+                    painter.text(r.center(), Align2::CENTER_CENTER, letter, FontId::proportional((h * 0.55 * z).max(4.0)), c_tronson());
                     painter.circle_filled(sp(Pos2::new(x + w / 2.0, y)), DOT_R * sc, color);
                     if let Some(l) = &el.label {
                         painter.text(sp(Pos2::new(x, y + DOT_R * vs + 3.0) + off), Align2::CENTER_TOP, l, FontId::proportional(13.0 * sc), color);
@@ -949,14 +1065,14 @@ impl CanvasUi {
                 }
                 SchemaKind::Hidrant | SchemaKind::CaminGrav | SchemaKind::CaminAer => {
                     let base = match el.kind {
-                        SchemaKind::Hidrant => C_RED,
-                        SchemaKind::CaminGrav => C_CAMIN_G,
-                        _ => C_CAMIN_A,
+                        SchemaKind::Hidrant => c_red(),
+                        SchemaKind::CaminGrav => c_camin_g(),
+                        _ => c_camin_a(),
                     };
-                    let c = if sel { C_SELECTED } else { base };
+                    let c = if sel { c_selected() } else { base };
                     let r = el.r.map_or(CIRCLE_R, |v| v as f32) * vs;
                     let center = sp(Pos2::new(x, y));
-                    painter.circle(center, r * z, Color32::WHITE, Stroke::new(2.0 * sc, c));
+                    painter.circle(center, r * z, c_bg(), Stroke::new(2.0 * sc, c));
                     for d in [Vec2::new(-r, 0.0), Vec2::new(r, 0.0), Vec2::new(0.0, -r), Vec2::new(0.0, r)] {
                         painter.circle_filled(center + d * z, 2.5 * sc, c);
                     }
@@ -967,8 +1083,8 @@ impl CanvasUi {
                 SchemaKind::Subsistem => {
                     let (w, h) = (el.w.map_or(SUB_W, |v| v as f32), el.h.map_or(SUB_H, |v| v as f32));
                     let r = Rect::from_min_max(sp(Pos2::new(x - w / 2.0, y - h / 2.0)), sp(Pos2::new(x + w / 2.0, y + h / 2.0)));
-                    let brd = if sel { C_SELECTED } else { C_SUB_BRD };
-                    painter.rect(r, CornerRadius::same((8.0 * z).min(40.0) as u8), C_SUB_FILL, Stroke::new(2.0 * sc, brd), egui::StrokeKind::Middle);
+                    let brd = if sel { c_selected() } else { c_sub_brd() };
+                    painter.rect(r, CornerRadius::same((8.0 * z).min(40.0) as u8), c_sub_fill(), Stroke::new(2.0 * sc, brd), egui::StrokeKind::Middle);
                     if let Some(l) = &el.label {
                         painter.text(sp(Pos2::new(x, y - h / 2.0 + 8.0) + off), Align2::CENTER_TOP, l, FontId::proportional(11.0 * sc), brd);
                     }
@@ -980,15 +1096,15 @@ impl CanvasUi {
                     }
                     let n = el.children.as_ref().map_or(0, |c| c.iter().filter(|e| e.kind == SchemaKind::Tronson).count());
                     let msg = if n > 0 { format!("{n} tronson{}", if n > 1 { "e" } else { "" }) } else { "dublu-click pt. a edita".into() };
-                    painter.text(sp(Pos2::new(x, y + 6.0)), Align2::CENTER_CENTER, msg, FontId::proportional(9.0 * sc), C_SUB_TEXT);
+                    painter.text(sp(Pos2::new(x, y + 6.0)), Align2::CENTER_CENTER, msg, FontId::proportional(9.0 * sc), c_sub_text());
                 }
                 SchemaKind::Text => {
                     if let Some(txt) = &el.text {
                         let fs = el.font_size.unwrap_or(12.0) as f32 * sc;
-                        let c = if sel { C_SELECTED } else { parse_color(el.color.as_deref()).unwrap_or(C_TRONSON) };
+                        let c = if sel { c_selected() } else { parse_color(el.color.as_deref()).unwrap_or(c_tronson()) };
                         let r = painter.text(sp(Pos2::new(x, y) + off), Align2::LEFT_TOP, txt, FontId::proportional(fs), c);
                         if sel {
-                            painter.rect_stroke(r.expand(2.0), 0.0, Stroke::new(1.0, C_SELECTED), egui::StrokeKind::Outside);
+                            painter.rect_stroke(r.expand(2.0), 0.0, Stroke::new(1.0, c_selected()), egui::StrokeKind::Outside);
                         }
                     }
                 }
@@ -999,7 +1115,7 @@ impl CanvasUi {
         if let Some(h) = self.selected.as_ref().and_then(|id| level.iter().find(|e| &e.id == id)).and_then(|e| resize_handle(e, vs)) {
             if !self.capturing {
                 let r = Rect::from_center_size(sp(h), Vec2::splat(9.0));
-                painter.rect(r, 0.0, Color32::WHITE, Stroke::new(1.5, C_SELECTED), egui::StrokeKind::Middle);
+                painter.rect(r, 0.0, c_bg(), Stroke::new(1.5, c_selected()), egui::StrokeKind::Middle);
             }
         }
 
@@ -1015,7 +1131,7 @@ impl CanvasUi {
             };
             draw_tronson(&painter, &preview, sp, sc, vs, z, mpp, rgb(0x94A3B8), false, None, Vec2::ZERO);
             let len = start.distance(*end) as f64 * mpp;
-            painter.text(sp(*end) + Vec2::new(10.0, -10.0), Align2::LEFT_BOTTOM, format_dist(len), FontId::proportional(12.0), C_SNAP);
+            painter.text(sp(*end) + Vec2::new(10.0, -10.0), Align2::LEFT_BOTTOM, format_dist(len), FontId::proportional(12.0), c_snap());
         }
 
         // Indicator de snap + coordonate cursor (nu și pe captura PNG)
@@ -1025,7 +1141,7 @@ impl CanvasUi {
                 let exclude = if let Drag::Move { id, .. } = &self.drag { Some(id.as_str()) } else { None };
                 let (s, snapped) = self.snap(p, &level, wp, exclude);
                 if snapped {
-                    painter.circle_stroke(sp(s), 7.0, Stroke::new(2.0, C_SNAP));
+                    painter.circle_stroke(sp(s), 7.0, Stroke::new(2.0, c_snap()));
                 }
             }
             let txt = format!("x {}   y {}", format_dist(wp.x as f64 * mpp), format_dist(wp.y as f64 * mpp));
@@ -1085,10 +1201,10 @@ impl CanvasUi {
                     }
                     if matches!(el.kind, SchemaKind::Tronson | SchemaKind::Text) {
                         for (hex, key) in COLOR_PRESETS {
-                            let c = parse_color(Some(hex)).unwrap_or(C_TRONSON);
+                            let c = parse_color(Some(hex)).unwrap_or(c_tronson());
                             let cur = el.color.as_deref().unwrap_or("#1a1a1a") == *hex;
                             let (r, resp) = ui.allocate_exact_size(Vec2::splat(18.0), Sense::click());
-                            ui.painter().circle(r.center(), 7.0, c, Stroke::new(if cur { 2.5 } else { 1.0 }, if cur { C_SELECTED } else { Color32::WHITE }));
+                            ui.painter().circle(r.center(), 7.0, c, Stroke::new(if cur { 2.5 } else { 1.0 }, if cur { c_selected() } else { Color32::WHITE }));
                             if resp.on_hover_text(t.t(&format!("step8.{key}"))).clicked() {
                                 el.color = (*hex != "#1a1a1a").then(|| hex.to_string());
                             }
@@ -1173,7 +1289,7 @@ fn ports_editor(ui: &mut Ui, t: &I18n, el: &mut SchemaElement) {
 }
 
 /// Zona `r` (în puncte) din captura ecranului, ca RGBA; întoarce și dimensiunile.
-fn crop_rgba(img: &egui::ColorImage, r: Rect, ppp: f32) -> (Vec<u8>, usize, usize) {
+pub(crate) fn crop_rgba(img: &egui::ColorImage, r: Rect, ppp: f32) -> (Vec<u8>, usize, usize) {
     let (x0, y0) = ((r.min.x * ppp).round().max(0.0) as usize, (r.min.y * ppp).round().max(0.0) as usize);
     let w = ((r.width() * ppp).round() as usize).min(img.size[0].saturating_sub(x0));
     let h = ((r.height() * ppp).round() as usize).min(img.size[1].saturating_sub(y0));
@@ -1228,16 +1344,16 @@ fn draw_tronson(
         let name_pos = sp(wmid + perp * step + off);
         let dim_pos = sp(wmid - perp * step + off);
         let shown = el.override_length.unwrap_or(len as f64 * mpp);
-        let name_color = if selected { C_SELECTED } else { parse_color(el.color.as_deref()).unwrap_or(C_TR_LABEL) };
+        let name_color = if selected { c_selected() } else { parse_color(el.color.as_deref()).unwrap_or(c_tr_label()) };
         // Textul e orizontal: pe tronsoane verticale îl aliniem dinspre linie spre exterior.
         let side = |v: f32| if perp.x.abs() > 0.7 { if v < 0.0 { Align2::RIGHT_CENTER } else { Align2::LEFT_CENTER } } else { Align2::CENTER_CENTER };
         painter.text(name_pos, side(perp.x), label, FontId::proportional(13.0 * sc), name_color);
-        painter.text(dim_pos, side(-perp.x), format_dist(shown), FontId::proportional(12.0 * sc), if selected { C_SELECTED } else { C_TRONSON });
+        painter.text(dim_pos, side(-perp.x), format_dist(shown), FontId::proportional(12.0 * sc), if selected { c_selected() } else { c_tronson() });
         if let Some(q) = q.filter(|q| *q > 0.0) {
             // Pe tronsoanele aproape verticale, Q stă sub nume (textul e orizontal).
             let q_pos = if perp.x.abs() > 0.7 { name_pos + Vec2::new(0.0, 14.0 * sc) } else { sp(wmid + perp * step * 2.0 + off) };
             let align = if perp.x.abs() > 0.7 { if perp.x < 0.0 { Align2::RIGHT_CENTER } else { Align2::LEFT_CENTER } } else { Align2::CENTER_CENTER };
-            painter.text(q_pos, align, format!("Q={q:.2} l/s"), FontId::proportional(11.0 * sc), C_Q);
+            painter.text(q_pos, align, format!("Q={q:.2} l/s"), FontId::proportional(11.0 * sc), c_q());
         }
     }
     let _ = zoom;

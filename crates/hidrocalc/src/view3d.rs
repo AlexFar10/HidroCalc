@@ -25,11 +25,27 @@ pub struct View3D {
     pub labels: bool,
     grid_rx: Option<Receiver<Result<TerrainGrid, String>>>,
     grid_error: Option<String>,
+    /// Zona de desen din cadrul curent (decupajul exportului PNG).
+    last_rect: Rect,
+    png_rx: Option<Receiver<std::sync::Arc<egui::ColorImage>>>,
+    /// PNG-ul gata (sau eroarea), preluat de aplicație pentru salvare.
+    pub png_ready: Option<Result<Vec<u8>, String>>,
 }
 
 impl Default for View3D {
     fn default() -> Self {
-        Self { yaw: -0.6, pitch: 0.55, zoom: 1.0, target: [0.0; 3], labels: true, grid_rx: None, grid_error: None }
+        Self {
+            yaw: -0.6,
+            pitch: 0.55,
+            zoom: 1.0,
+            target: [0.0; 3],
+            labels: true,
+            grid_rx: None,
+            grid_error: None,
+            last_rect: Rect::NOTHING,
+            png_rx: None,
+            png_ready: None,
+        }
     }
 }
 
@@ -67,6 +83,117 @@ fn norm(a: [f32; 3]) -> [f32; 3] {
 }
 fn f3(v: Vec3) -> [f32; 3] {
     [v[0] as f32, v[1] as f32, v[2] as f32]
+}
+
+/// Geometria modelului 3D, grupată pe obiecte (teren, fiecare conductă, fiecare nod, puncte topo).
+/// O folosesc și desenarea vederii, și exporturile 3D, deci ce vezi e ce exporți.
+pub(crate) fn model_groups(scene: &Scene) -> Vec<(String, crate::mesh3d::Scene3)> {
+    use crate::mesh3d::{self as m3, lerp, rgb, Scene3, Vert};
+    let span = scene.span as f32;
+    let h = span * 0.035;
+    let pipe_r = |de: f64| span * 0.0025 * ((de.max(63.0) / 110.0) as f32).sqrt();
+    let mut groups: Vec<(String, Scene3)> = Vec::new();
+
+    // Teren: culori hipsometrice (verde → galben → maro), normale netede, semitransparent
+    if let Some(tr) = &scene.terrain {
+        let mut s3 = Scene3::default();
+        let (low, mid, high) = (rgb(0x4D7C0F), rgb(0xCA8A04), rgb(0x7C2D12));
+        let range = (tr.max_h - tr.min_h).max(0.01) as f32;
+        let pos: Vec<[f32; 3]> = tr.positions.iter().map(|v| f3(*v)).collect();
+        let idx = |i: usize, j: usize| j * tr.nx + i;
+        let mut normals = vec![[0.0f32; 3]; pos.len()];
+        let mut tris = Vec::new();
+        for j in 0..tr.ny - 1 {
+            for i in 0..tr.nx - 1 {
+                let (a, b, c, d) = (idx(i, j), idx(i + 1, j), idx(i, j + 1), idx(i + 1, j + 1));
+                for t in [[a, c, b], [b, c, d]] {
+                    let n = m3::cross(m3::sub(pos[t[1]], pos[t[0]]), m3::sub(pos[t[2]], pos[t[0]]));
+                    for k in t {
+                        normals[k] = m3::add(normals[k], n);
+                    }
+                    tris.push(t);
+                }
+            }
+        }
+        let color = |k: usize| {
+            let f = ((tr.heights[k] - tr.min_h) as f32 / range).clamp(0.0, 1.0);
+            if f < 0.5 { lerp(low, mid, f * 2.0) } else { lerp(mid, high, (f - 0.5) * 2.0) }
+        };
+        for t in tris {
+            let v = t.map(|k| Vert { p: pos[k], n: m3::norm(normals[k]), c: color(k) });
+            s3.tris.push(m3::Tri { v, alpha: 0.55, layer: 1, double_sided: true });
+        }
+        groups.push(("Teren".into(), s3));
+    }
+
+    // Conducte: sub pământ (stratul 0), tuburi împărțite în bucăți pentru sortare
+    for p in &scene.pipes {
+        let mut s3 = Scene3::default();
+        s3.layer = 0;
+        let (a, b) = (f3(p.start), f3(p.end));
+        let col = p.color.as_deref().and_then(|c| u32::from_str_radix(c.trim_start_matches('#'), 16).ok()).filter(|c| *c != 0x1A1A1A).map(rgb).unwrap_or(rgb(0x2563EB));
+        let len = m3::dot(m3::sub(b, a), m3::sub(b, a)).sqrt();
+        let n = ((len / (span / 40.0)).ceil() as usize).clamp(1, 40);
+        for k in 0..n {
+            let (t0, t1) = (k as f32 / n as f32, (k + 1) as f32 / n as f32);
+            s3.cylinder(lerp(a, b, t0), lerp(a, b, t1), pipe_r(p.d_ext), pipe_r(p.d_ext), 10, col, 1.0, k == 0 || k == n - 1);
+        }
+        // verticalele de la capete (sub pământ) și urma pe sol (deasupra)
+        s3.line(f3(p.ground_start), a, Color32::from_rgb(0x78, 0x71, 0x6C), 1.0, false);
+        s3.line(f3(p.ground_end), b, Color32::from_rgb(0x78, 0x71, 0x6C), 1.0, false);
+        s3.layer = 2;
+        s3.line(f3(p.ground_start), f3(p.ground_end), Color32::from_rgb(0xA1, 0x62, 0x07), 1.5, true);
+        groups.push((format!("Conducta {}", p.label), s3));
+    }
+
+    // Noduri (modelele procedurale din aplicația React)
+    for n in &scene.nodes {
+        let mut s3 = Scene3::default();
+        let g = f3(n.ground);
+        let up = |dy: f32| [g[0], g[1] + dy, g[2]];
+        // căminele și racordul la conductă sunt sub pământ; restul deasupra
+        s3.layer = 0;
+        s3.line(f3(n.invert), g, Color32::from_rgb(0x78, 0x71, 0x6C), 1.0, false);
+        s3.layer = if matches!(n.kind, SchemaKind::CaminGrav | SchemaKind::CaminAer) { 0 } else { 2 };
+        let name = match n.kind {
+            SchemaKind::Hidrant => "Hidrant",
+            SchemaKind::Rezervor => "Rezervor",
+            SchemaKind::Sursa => "Sursa",
+            SchemaKind::CaminGrav => "Camin gravitational",
+            SchemaKind::CaminAer => "Camin aerian",
+            SchemaKind::Subsistem => "Subsistem",
+            _ => "Nod",
+        };
+        match n.kind {
+            SchemaKind::Hidrant => {
+                s3.cylinder(g, up(h * 0.8), h * 0.15, h * 0.12, 10, rgb(0xDC2626), 1.0, true);
+                s3.sphere(up(h * 0.82), h * 0.14, rgb(0xB91C1C));
+                s3.cylinder([g[0] - h * 0.21, g[1] + h * 0.55, g[2]], [g[0] + h * 0.21, g[1] + h * 0.55, g[2]], h * 0.05, h * 0.05, 6, rgb(0x991B1B), 1.0, true);
+            }
+            SchemaKind::Rezervor => {
+                s3.cylinder(g, up(h * 0.8), h * 0.7, h * 0.7, 16, rgb(0x94A3B8), 1.0, true);
+                s3.cylinder(up(h * 0.8), up(h), h * 0.74, 0.0, 16, rgb(0x64748B), 1.0, false);
+            }
+            SchemaKind::Sursa => s3.bx(g, h * 0.9, h * 0.7, h * 0.9, rgb(0x0D9488), 1.0),
+            SchemaKind::CaminGrav | SchemaKind::CaminAer => {
+                let c = if n.kind == SchemaKind::CaminGrav { rgb(0x1D4ED8) } else { rgb(0x3B82F6) };
+                s3.cylinder(up(-h * 0.5), g, h * 0.3, h * 0.3, 10, c, 1.0, true);
+            }
+            SchemaKind::Subsistem => s3.bx(g, h * 1.6, h * 0.3, h, rgb(0x14B8A6), 0.6),
+            _ => {}
+        }
+        let label = if n.label.is_empty() { name.to_string() } else { format!("{name} {}", n.label) };
+        groups.push((label, s3));
+    }
+    if !scene.topo.is_empty() {
+        let mut s3 = Scene3::default();
+        s3.layer = 2;
+        for tp in &scene.topo {
+            s3.sphere(f3(*tp), h * 0.12, rgb(0x16A34A));
+        }
+        groups.push(("Puncte topo".into(), s3));
+    }
+    groups
 }
 
 impl Camera {
@@ -174,10 +301,56 @@ impl View3D {
         })
     }
 
+    /// Imaginea cerută cu `request_png`: captura ecranului, decupată pe zona de desen.
+    fn finish_png(&mut self, ctx: &egui::Context) {
+        let Some(img) = self.png_rx.as_ref().and_then(|rx| rx.try_recv().ok()) else {
+            if self.png_rx.is_some() {
+                ctx.request_repaint();
+            }
+            return;
+        };
+        self.png_rx = None;
+        let (rgba, w, h) = crate::canvas::crop_rgba(&img, self.last_rect, ctx.pixels_per_point());
+        let mut png = Vec::new();
+        let enc = image::codecs::png::PngEncoder::new(&mut png);
+        self.png_ready = Some(match image::ImageEncoder::write_image(enc, &rgba, w as u32, h as u32, image::ExtendedColorType::Rgba8) {
+            Ok(()) => Ok(png),
+            Err(e) => Err(e.to_string()),
+        });
+    }
+
+    /// Modelul 3D curent (cu exagerarea verticală și adâncimea setate în vedere) în formatul cerut.
+    pub fn model_bytes(p: &ProjectData, format: crate::export3d::ModelFormat) -> Result<Vec<u8>, String> {
+        let scene = Self::scene(p);
+        if p.network_schema.is_empty() {
+            return Err("schema e goală".into());
+        }
+        crate::export3d::export(&model_groups(&scene), format)
+    }
+
+    /// Cere exportul PNG al vederii 3D (butonul „PNG 3D” din bara laterală); captura vine la cadrul următor.
+    pub fn request_png(&mut self, ctx: &egui::Context) {
+        if self.png_rx.is_some() {
+            return;
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        ctx.request_screenshot(move |img| {
+            let _ = tx.send(img);
+        });
+        self.png_rx = Some(rx);
+        ctx.request_repaint();
+    }
+
+    /// Terenul încă se descarcă (captura trebuie să aștepte).
+    pub fn terrain_loading(&self) -> bool {
+        self.grid_rx.is_some()
+    }
+
     pub fn ui(&mut self, ui: &mut Ui, t: &I18n, p: &mut ProjectData, height: f32) {
         let pl = pal(ui);
         let ctx = ui.ctx().clone();
         self.sync_grid(&ctx, p);
+        self.finish_png(&ctx);
 
         ui.horizontal_wrapped(|ui| {
             let mut ex = setting_f64(p, "view3DExaggeration", 5.0);
@@ -202,6 +375,7 @@ impl View3D {
 
         let scene = Self::scene(p);
         let (rect, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), height), Sense::click_and_drag());
+        self.last_rect = rect;
         self.interact(ui, &resp, &scene);
         let painter = ui.painter_at(rect);
         if p.network_schema.is_empty() {
@@ -274,7 +448,7 @@ impl View3D {
     }
 
     fn draw(&self, painter: &egui::Painter, cam: &Camera, scene: &Scene, rect: Rect, dark: bool) {
-        use crate::mesh3d::{self as m3, lerp, rgb, Scene3, Vert};
+        use crate::mesh3d::{self as m3, Scene3};
         // Fundal în degrade (cer)
         let (top, bottom) = if dark { (Color32::from_rgb(0x0B, 0x12, 0x20), Color32::from_rgb(0x1A, 0x24, 0x36)) } else { (Color32::from_rgb(0xDC, 0xE6, 0xF2), Color32::from_rgb(0xF4, 0xF6, 0xFA)) };
         let mut bg = Mesh::default();
@@ -286,8 +460,7 @@ impl View3D {
         painter.add(Shape::mesh(bg));
 
         let span = scene.span as f32;
-        let symbol_h = span * 0.035;
-        let pipe_r = |de: f64| span * 0.0025 * ((de.max(63.0) / 110.0) as f32).sqrt();
+        let h = span * 0.035;
         let mut s3 = Scene3::default();
 
         // Grila de bază (gridHelper)
@@ -302,86 +475,10 @@ impl View3D {
             }
         }
 
-        // Teren: culori hipsometrice (verde → galben → maro), normale netede, semitransparent
-        if let Some(tr) = &scene.terrain {
-            let (low, mid, high) = (rgb(0x4D7C0F), rgb(0xCA8A04), rgb(0x7C2D12));
-            let range = (tr.max_h - tr.min_h).max(0.01) as f32;
-            let pos: Vec<[f32; 3]> = tr.positions.iter().map(|v| f3(*v)).collect();
-            let idx = |i: usize, j: usize| j * tr.nx + i;
-            let mut normals = vec![[0.0f32; 3]; pos.len()];
-            let mut tris = Vec::new();
-            for j in 0..tr.ny - 1 {
-                for i in 0..tr.nx - 1 {
-                    let (a, b, c, d) = (idx(i, j), idx(i + 1, j), idx(i, j + 1), idx(i + 1, j + 1));
-                    for t in [[a, c, b], [b, c, d]] {
-                        let n = m3::cross(m3::sub(pos[t[1]], pos[t[0]]), m3::sub(pos[t[2]], pos[t[0]]));
-                        for k in t {
-                            normals[k] = m3::add(normals[k], n);
-                        }
-                        tris.push(t);
-                    }
-                }
-            }
-            let color = |k: usize| {
-                let f = ((tr.heights[k] - tr.min_h) as f32 / range).clamp(0.0, 1.0);
-                if f < 0.5 { lerp(low, mid, f * 2.0) } else { lerp(mid, high, (f - 0.5) * 2.0) }
-            };
-            for t in tris {
-                let v = t.map(|k| Vert { p: pos[k], n: m3::norm(normals[k]), c: color(k) });
-                s3.tris.push(m3::Tri { v, alpha: 0.55, layer: 1, double_sided: true });
-            }
-        }
-
-        // Conducte: sub pământ (stratul 0), tuburi împărțite în bucăți pentru sortare
-        s3.layer = 0;
-        for p in &scene.pipes {
-            let (a, b) = (f3(p.start), f3(p.end));
-            let col = p.color.as_deref().and_then(|c| u32::from_str_radix(c.trim_start_matches('#'), 16).ok()).filter(|c| *c != 0x1A1A1A).map(rgb).unwrap_or(rgb(0x2563EB));
-            let len = m3::dot(m3::sub(b, a), m3::sub(b, a)).sqrt();
-            let n = ((len / (span / 40.0)).ceil() as usize).clamp(1, 40);
-            for k in 0..n {
-                let (t0, t1) = (k as f32 / n as f32, (k + 1) as f32 / n as f32);
-                s3.cylinder(lerp(a, b, t0), lerp(a, b, t1), pipe_r(p.d_ext), pipe_r(p.d_ext), 10, col, 1.0, k == 0 || k == n - 1);
-            }
-            // verticalele de la capete (sub pământ) și urma pe sol (deasupra)
-            s3.line(f3(p.ground_start), a, Color32::from_rgb(0x78, 0x71, 0x6C), 1.0, false);
-            s3.line(f3(p.ground_end), b, Color32::from_rgb(0x78, 0x71, 0x6C), 1.0, false);
-            s3.layer = 2;
-            s3.line(f3(p.ground_start), f3(p.ground_end), Color32::from_rgb(0xA1, 0x62, 0x07), 1.5, true);
-            s3.layer = 0;
-        }
-
-        // Noduri (modelele procedurale din aplicația React)
-        let h = symbol_h;
-        for n in &scene.nodes {
-            let g = f3(n.ground);
-            let up = |dy: f32| [g[0], g[1] + dy, g[2]];
-            // căminele și racordul la conductă sunt sub pământ; restul deasupra
-            s3.layer = 0;
-            s3.line(f3(n.invert), g, Color32::from_rgb(0x78, 0x71, 0x6C), 1.0, false);
-            s3.layer = if matches!(n.kind, SchemaKind::CaminGrav | SchemaKind::CaminAer) { 0 } else { 2 };
-            match n.kind {
-                SchemaKind::Hidrant => {
-                    s3.cylinder(g, up(h * 0.8), h * 0.15, h * 0.12, 10, rgb(0xDC2626), 1.0, true);
-                    s3.sphere(up(h * 0.82), h * 0.14, rgb(0xB91C1C));
-                    s3.cylinder([g[0] - h * 0.21, g[1] + h * 0.55, g[2]], [g[0] + h * 0.21, g[1] + h * 0.55, g[2]], h * 0.05, h * 0.05, 6, rgb(0x991B1B), 1.0, true);
-                }
-                SchemaKind::Rezervor => {
-                    s3.cylinder(g, up(h * 0.8), h * 0.7, h * 0.7, 16, rgb(0x94A3B8), 1.0, true);
-                    s3.cylinder(up(h * 0.8), up(h), h * 0.74, 0.0, 16, rgb(0x64748B), 1.0, false);
-                }
-                SchemaKind::Sursa => s3.bx(g, h * 0.9, h * 0.7, h * 0.9, rgb(0x0D9488), 1.0),
-                SchemaKind::CaminGrav | SchemaKind::CaminAer => {
-                    let c = if n.kind == SchemaKind::CaminGrav { rgb(0x1D4ED8) } else { rgb(0x3B82F6) };
-                    s3.cylinder(up(-h * 0.5), g, h * 0.3, h * 0.3, 10, c, 1.0, true);
-                }
-                SchemaKind::Subsistem => s3.bx(g, h * 1.6, h * 0.3, h, rgb(0x14B8A6), 0.6),
-                _ => {}
-            }
-        }
-        s3.layer = 2;
-        for tp in &scene.topo {
-            s3.sphere(f3(*tp), h * 0.12, rgb(0x16A34A));
+        // Geometria modelului (aceeași ca la exportul 3D).
+        for (_, g) in model_groups(scene) {
+            s3.tris.extend(g.tris);
+            s3.lines.extend(g.lines);
         }
 
         let mcam = m3::Cam { eye: cam.eye, right: cam.right, up: cam.up, fwd: cam.fwd, focal: cam.focal, center: cam.center, near: span / 2000.0 };

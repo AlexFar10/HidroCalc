@@ -12,8 +12,4 @@ serde = { version = "1.0", features = ["derive"] }
 ureq = "2"
 png = "0.17"
 serde_json = "1.0.154"
-rust_xlsxwriter = "0.92.0"
 roxmltree = "0.21.2"
-krilla = "0.6.0"
-skrifa = "0.42"
-zip = { version = "4.2.0", default-features = false, features = ["deflate"] }

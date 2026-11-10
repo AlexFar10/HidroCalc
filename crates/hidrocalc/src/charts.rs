@@ -4,10 +4,10 @@
 use crate::widgets::{fmt, pal};
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 
-pub const CYAN: Color32 = Color32::from_rgb(0x06, 0xB6, 0xD4);
-pub const AMBER: Color32 = Color32::from_rgb(0xF5, 0x9E, 0x0B);
-pub const GREEN: Color32 = Color32::from_rgb(0x10, 0xB9, 0x81);
-pub const RED: Color32 = Color32::from_rgb(0xEF, 0x44, 0x44);
+pub const CYAN: Color32 = Color32::from_rgb(0x5B, 0x8D, 0xB8);
+pub const AMBER: Color32 = Color32::from_rgb(0xC9, 0xA4, 0x67);
+pub const GREEN: Color32 = Color32::from_rgb(0x6F, 0xA5, 0x8A);
+pub const RED: Color32 = Color32::from_rgb(0xC7, 0x7A, 0x76);
 
 /// Valoare „rotundă” ≥ v pentru capătul axei Y.
 fn nice_max(v: f64) -> f64 {

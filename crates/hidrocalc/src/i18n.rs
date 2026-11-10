@@ -10,15 +10,6 @@ pub enum Lang {
     En,
 }
 
-impl Lang {
-    pub fn code(self) -> &'static str {
-        match self {
-            Lang::Ro => "RO",
-            Lang::En => "EN",
-        }
-    }
-}
-
 pub struct I18n {
     ro: Value,
     en: Value,
@@ -46,6 +37,16 @@ impl I18n {
             Some(Value::String(s)) => s.clone(),
             _ => key.to_string(),
         }
+    }
+
+    /// Textul de ajutor (tooltip): scris în română în cod; în engleză, tradus din `tips`.
+    pub fn tip(&self, ro: &str) -> String {
+        if self.lang == Lang::En {
+            if let Some(Value::String(s)) = self.en.get("tips").and_then(|t| t.get(ro)) {
+                return s.clone();
+            }
+        }
+        ro.to_string()
     }
 
     /// Ca [`Self::t`], cu înlocuirea `{{nume}}` → valoare.
@@ -85,5 +86,21 @@ mod tests {
         assert_eq!(i.t("nu.exista"), "nu.exista");
         let en = I18n::new(Lang::En);
         assert_ne!(en.t("home.newProject"), i.t("home.newProject"));
+    }
+
+    /// Orice text de ajutor din cod trebuie să aibă traducere în engleză.
+    #[test]
+    fn every_tip_has_an_english_translation() {
+        let en = I18n::new(Lang::En);
+        let sources = [include_str!("steps.rs"), include_str!("network_ui.rs")];
+        let mut n = 0;
+        for src in sources {
+            for part in src.split("t.tip(\"").skip(1) {
+                let ro = part.split("\")").next().unwrap();
+                assert_ne!(en.tip(ro), ro, "lipsește traducerea EN pentru: {ro}");
+                n += 1;
+            }
+        }
+        assert!(n >= 30, "au fost găsite doar {n} texte de ajutor");
     }
 }
