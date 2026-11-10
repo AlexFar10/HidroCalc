@@ -43,6 +43,18 @@ fn shortcut_text(ctx: &egui::Context, sc: &egui::KeyboardShortcut) -> String {
     }
 }
 
+/// Comutatorul de limbă, ca cel de temă: un buton care arată limba la care treci (EN când ești pe RO).
+fn lang_switch(ui: &mut egui::Ui, s: &mut Settings) {
+    let (target, tip) = if s.lang == Lang::Ro { ("EN", "Switch to English") } else { ("RO", "Treci la română") };
+    if widgets::icon_button(ui, tip, |p, r, col, _bg| {
+        p.text(r.center(), egui::Align2::CENTER_CENTER, target, egui::FontId::proportional(13.0), col);
+    })
+    .clicked()
+    {
+        s.lang = if s.lang == Lang::Ro { Lang::En } else { Lang::Ro };
+    }
+}
+
 /// Acțiuni din panoul de proiect al barei laterale, executate după desenare.
 enum Act {
     Home,
@@ -55,10 +67,6 @@ enum Act {
 const BAR_H: f32 = 56.0;
 /// Lățimea barei laterale.
 const SIDEBAR_W: f32 = 270.0;
-/// Sub această lățime a ferestrei bara laterală se ascunde singură (se poate deschide manual).
-const NARROW_W: f32 = 1100.0;
-/// Lățimea minimă a conținutului; sub ea apare derulare orizontală, nu se strâng câmpurile.
-const MIN_CONTENT_W: f32 = 720.0;
 const SAVE_DEBOUNCE: Duration = Duration::from_millis(300);
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
@@ -121,8 +129,6 @@ pub struct HidroApp {
     show_help: bool,
     /// Cerere de a muta focusul de la tastatură pe conținut („Sari la conținut”).
     focus_content: bool,
-    /// Pe ferestre înguste bara laterală e ascunsă implicit; aici se ține dacă e deschisă manual.
-    narrow_open: bool,
     logo: Option<egui::TextureHandle>,
 }
 
@@ -171,7 +177,6 @@ impl HidroApp {
             export_job: None,
             show_help: false,
             focus_content: false,
-            narrow_open: false,
             logo: None,
         };
         app.reload_list();
@@ -468,10 +473,7 @@ impl HidroApp {
                         if widgets::icon_button(ui, &tip, |pt, r, col, bg| widgets::paint_theme_icon(pt, r, col, bg, dark)).clicked() {
                             s.dark = !s.dark;
                         }
-                        let sel = if s.lang == Lang::Ro { 0 } else { 1 };
-                        if let Some(i) = widgets::segmented(ui, &["RO", "EN"], sel) {
-                            s.lang = if i == 0 { Lang::Ro } else { Lang::En };
-                        }
+                        lang_switch(ui, &mut s);
                         ui.add_space(8.0);
                         if widgets::primary_button(ui, &self.t.t("home.newProject")).clicked() {
                             new = true;
@@ -505,18 +507,14 @@ impl HidroApp {
 
     /// Bara laterală e vizibilă: pe ferestre înguste doar dacă a fost deschisă manual,
     /// altfel după preferința din setări.
-    fn sidebar_visible(&self, ctx: &egui::Context) -> bool {
-        if ctx.content_rect().width() < NARROW_W { self.narrow_open } else { !self.settings.sidebar_closed }
+    fn sidebar_visible(&self, _ctx: &egui::Context) -> bool {
+        !self.settings.sidebar_closed
     }
 
     fn toggle_sidebar(&mut self, ctx: &egui::Context) {
-        if ctx.content_rect().width() < NARROW_W {
-            self.narrow_open = !self.narrow_open;
-        } else {
-            let mut s = self.settings.clone();
-            s.sidebar_closed = !s.sidebar_closed;
-            self.set_settings(ctx, s);
-        }
+        let mut s = self.settings.clone();
+        s.sidebar_closed = !s.sidebar_closed;
+        self.set_settings(ctx, s);
     }
 
     /// Scurtături globale: pași, bara laterală, ajutor. Se consumă înainte de desenare.
@@ -561,7 +559,7 @@ impl HidroApp {
             .rect_stroke(r.rect.expand(2.0), CornerRadius::same(8), Stroke::new(2.0, p.accent), egui::StrokeKind::Outside);
     }
 
-    /// Fereastra cu scurtăturile de tastatură (F1 sau butonul „?” din bara laterală).
+    /// Fereastra „Ajutor și accesibilitate” (F1 sau butonul „?” din bara laterală).
     fn help_window(&mut self, ctx: &egui::Context) {
         if !self.show_help {
             return;
@@ -570,82 +568,111 @@ impl HidroApp {
         let t = &self.t;
         let sc = |s: &egui::KeyboardShortcut| shortcut_text(ctx, s);
         let cmd = |k: &str| format!("{}+{k}", ctx.format_modifiers(egui::Modifiers::COMMAND));
-        let rows: Vec<(&str, Vec<(String, String)>)> = vec![
+        let v = |items: &[&str]| -> Vec<String> { items.iter().map(|s| s.to_string()).collect() };
+        // (titlu, [(taste, descriere)])
+        let sections: Vec<(&str, Vec<(Vec<String>, String)>)> = vec![
             (
                 "help.general",
                 vec![
-                    ("Tab / Shift+Tab".into(), t.t("help.tab")),
-                    ("Enter / Space".into(), t.t("help.activate")),
-                    (format!("{} / {}", sc(&SC_PREV), sc(&SC_NEXT)), format!("{} / {}", t.t("help.prev"), t.t("help.next"))),
-                    (cmd("1…9"), t.t("help.jump")),
-                    (sc(&SC_SIDEBAR), t.t("help.sidebar")),
-                    (sc(&SC_HELP), t.t("help.help")),
+                    (v(&["Tab", "Shift+Tab"]), t.t("help.tab")),
+                    (v(&["Enter", "Space"]), t.t("help.activate")),
+                    (vec![sc(&SC_PREV), sc(&SC_NEXT)], format!("{} / {}", t.t("help.prev"), t.t("help.next"))),
+                    (vec![cmd("1…9")], t.t("help.jump")),
+                    (vec![sc(&SC_SIDEBAR)], t.t("help.sidebar")),
+                    (vec![sc(&SC_HELP)], t.t("help.help")),
                 ],
             ),
             (
                 "help.plan",
                 vec![
-                    ("← ↑ → ↓".into(), t.t("help.planMove")),
-                    ("PageDown / PageUp".into(), t.t("help.planCycle")),
-                    ("V L R S H G A U T E".into(), t.t("help.planTools")),
-                    ("Enter".into(), t.t("help.planEnter")),
-                    ("+ / −".into(), t.t("help.planZoom")),
-                    ("Delete".into(), t.t("help.planDel")),
-                    (cmd("Z"), t.t("help.planUndo")),
-                    ("Esc".into(), t.t("help.planEsc")),
+                    (v(&["←", "↑", "→", "↓"]), t.t("help.planMove")),
+                    (v(&["PageDown", "PageUp"]), t.t("help.planCycle")),
+                    (v(&["V", "L", "R", "S", "H", "G", "A", "U", "T", "E"]), t.t("help.planTools")),
+                    (v(&["Enter"]), t.t("help.planEnter")),
+                    (v(&["+", "−"]), t.t("help.planZoom")),
+                    (v(&["Delete"]), t.t("help.planDel")),
+                    (vec![cmd("Z")], t.t("help.planUndo")),
+                    (v(&["Esc"]), t.t("help.planEsc")),
                 ],
             ),
             (
                 "help.view3d",
                 vec![
-                    ("← ↑ → ↓".into(), t.t("help.rotate")),
-                    ("Shift + ← ↑ → ↓".into(), t.t("help.pan3d")),
-                    ("+ / −".into(), t.t("help.zoom3d")),
-                    ("Home".into(), t.t("help.reset3d")),
+                    (v(&["←", "↑", "→", "↓"]), t.t("help.rotate")),
+                    (v(&["Shift", "←", "↑", "→", "↓"]), t.t("help.pan3d")),
+                    (v(&["+", "−"]), t.t("help.zoom3d")),
+                    (v(&["Home"]), t.t("help.reset3d")),
                 ],
             ),
         ];
+        let key_cap = |ui: &mut egui::Ui, k: &str| {
+            egui::Frame::new()
+                .fill(p.panel2)
+                .stroke(Stroke::new(1.0, p.border))
+                .corner_radius(CornerRadius::same(5))
+                .inner_margin(Margin::symmetric(6, 2))
+                .show(ui, |ui| {
+                    ui.label(RichText::new(k).monospace().size(12.0).color(p.ink));
+                });
+        };
         let mut open = true;
         let mut s = self.settings.clone();
-        egui::Window::new(t.t("help.title")).open(&mut open).collapsible(false).resizable(false).default_width(480.0).anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0)).show(ctx, |ui| {
-            let max_h = (ctx.content_rect().height() - 120.0).max(200.0);
-            egui::ScrollArea::vertical().max_height(max_h).min_scrolled_height(max_h.min(640.0)).show(ui, |ui| {
-            widgets::section_title(ui, &t.t("help.a11yTitle"));
-            let pct = if s.ui_scale_pct == 0 { 100 } else { s.ui_scale_pct };
-            ui.horizontal(|ui| {
-                ui.label(RichText::new(t.t("help.uiSize")).color(p.ink2));
-                if ui.add_enabled(pct > 70, egui::Button::new("−")).clicked() {
-                    s.ui_scale_pct = pct.saturating_sub(10).max(70);
-                }
-                ui.label(RichText::new(format!("{pct}%")).monospace());
-                if ui.add_enabled(pct < 200, egui::Button::new("+")).clicked() {
-                    s.ui_scale_pct = (pct + 10).min(200);
-                }
-                if ui.button(t.t("help.reset")).clicked() {
-                    s.ui_scale_pct = 100;
-                }
-            });
-            ui.add(egui::Label::new(RichText::new(t.t("help.zoomHint")).size(12.0).color(p.muted)).wrap());
-            ui.add_space(4.0);
-            ui.checkbox(&mut s.high_contrast, t.t("help.contrast"));
-            ui.checkbox(&mut s.reduce_motion, t.t("help.motion"));
-            ui.add_space(8.0);
-            ui.separator();
-            for (title, items) in &rows {
-                ui.add_space(4.0);
-                widgets::section_title(ui, &t.t(title));
-                egui::Grid::new(*title).num_columns(2).spacing([16.0, 6.0]).show(ui, |ui| {
-                    for (keys, desc) in items {
-                        ui.label(RichText::new(keys).monospace().size(12.5).color(p.ink));
-                        ui.add(egui::Label::new(RichText::new(desc).size(13.0).color(p.ink2)).wrap());
-                        ui.end_row();
+        egui::Window::new(t.t("help.title"))
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .fixed_size(egui::vec2(560.0, (ctx.content_rect().height() - 100.0).clamp(240.0, 720.0)))
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .show(ctx, |ui| {
+                egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 6.0;
+                    // Accesibilitate: setările, primele.
+                    widgets::section_title(ui, &t.t("help.a11yTitle"));
+                    widgets::card(ui, |ui| {
+                        let pct = if s.ui_scale_pct == 0 { 100 } else { s.ui_scale_pct };
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new(t.t("help.uiSize")).color(p.ink));
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                if ui.button(t.t("help.reset")).clicked() {
+                                    s.ui_scale_pct = 100;
+                                }
+                                if ui.add_enabled(pct < 200, egui::Button::new("+")).clicked() {
+                                    s.ui_scale_pct = (pct + 10).min(200);
+                                }
+                                ui.label(RichText::new(format!("{pct}%")).monospace().color(p.ink));
+                                if ui.add_enabled(pct > 70, egui::Button::new("−")).clicked() {
+                                    s.ui_scale_pct = pct.saturating_sub(10).max(70);
+                                }
+                            });
+                        });
+                        ui.label(RichText::new(t.t("help.zoomHint")).size(12.0).color(p.muted));
+                        ui.add_space(6.0);
+                        ui.checkbox(&mut s.high_contrast, t.t("help.contrast"));
+                        ui.checkbox(&mut s.reduce_motion, t.t("help.motion"));
+                    });
+                    for (title, rows) in &sections {
+                        ui.add_space(8.0);
+                        widgets::section_title(ui, &t.t(title));
+                        widgets::card(ui, |ui| {
+                            ui.spacing_mut().item_spacing.y = 8.0;
+                            for (keys, desc) in rows {
+                                ui.horizontal_top(|ui| {
+                                    ui.allocate_ui_with_layout(egui::vec2(190.0, 0.0), Layout::left_to_right(Align::Min).with_main_wrap(true), |ui| {
+                                        ui.set_width(190.0);
+                                        ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
+                                        for k in keys {
+                                            key_cap(ui, k);
+                                        }
+                                    });
+                                    ui.add(egui::Label::new(RichText::new(desc).size(13.0).color(p.ink2)).wrap());
+                                });
+                            }
+                        });
                     }
+                    ui.add_space(8.0);
+                    ui.add(egui::Label::new(RichText::new(t.t("help.focusHint")).size(12.0).color(p.muted)).wrap());
                 });
-            }
-            ui.add_space(8.0);
-            ui.add(egui::Label::new(RichText::new(t.t("help.focusHint")).size(12.0).color(p.muted)).wrap());
             });
-        });
         if s != self.settings {
             self.set_settings(ctx, s);
         }
@@ -658,10 +685,7 @@ impl HidroApp {
         let mut s = self.settings.clone();
         egui::Panel::bottom("sidebar_settings").frame(egui::Frame::new().fill(p.panel).inner_margin(Margin::symmetric(0, 12))).show(ui, |ui| {
             ui.horizontal(|ui| {
-                let sel = if s.lang == Lang::Ro { 0 } else { 1 };
-                if let Some(i) = widgets::segmented(ui, &["RO", "EN"], sel) {
-                    s.lang = if i == 0 { Lang::Ro } else { Lang::En };
-                }
+                lang_switch(ui, &mut s);
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     let tip = if s.dark { self.t.t("nav.switchToLight") } else { self.t.t("nav.switchToDark") };
                     let help_tip = format!("{} ({})", self.t.t("help.title"), shortcut_text(ui.ctx(), &SC_HELP));
@@ -922,10 +946,12 @@ impl HidroApp {
             if std::mem::take(&mut self.focus_content) {
                 ui.memory_mut(|m| m.request_focus(anchor.id));
             }
-            // Derulare și pe orizontală: sub `MIN_CONTENT_W` conținutul nu se mai strânge, ci se derulează.
+            // Dacă un ecran e mai lat decât fereastra, conținutul se derulează orizontal (bară vizibilă),
+            // în loc să iasă din fereastră.
             let viewport_w = ui.available_width();
+            ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
             egui::ScrollArea::both().id_salt(("step", step)).auto_shrink(false).show(ui, |ui| {
-                ui.set_width(viewport_w.max(MIN_CONTENT_W));
+                ui.set_width(viewport_w);
                 let (Some(project), Some(results)) = (&mut self.project, &self.results) else { return };
                 if let Some(go) = steps::show(ui, &self.t, project, results, &mut self.net_ui) {
                     project.current_step = go;
@@ -1581,18 +1607,54 @@ mod snapshots {
         let closed_x = title_x(&h);
         assert!(closed_x < 60.0, "cu bara ascunsă conținutul umple lățimea: {closed_x}");
         h.render().unwrap().save(out.join("responsive-1360-closed.png")).unwrap();
-        // 1000: bara se ascunde singură; Cmd+B o deschide
+        // 1000 px: bara nu se mai ascunde singură; butonul/Cmd+B o ascund și o arată, la orice mărime
         let (mut h2, d2) = mk(1000.0);
-        assert!(!h2.state().sidebar_visible(&h2.ctx.clone()), "sub 1100 px bara e ascunsă implicit");
-        assert!(title_x(&h2) < 60.0);
+        assert!(h2.state().sidebar_visible(&h2.ctx.clone()), "bara laterală nu se ascunde automat");
         h2.render().unwrap().save(out.join("responsive-1000.png")).unwrap();
         h2.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::B);
         h2.run_steps(3);
-        assert!(h2.state().sidebar_visible(&h2.ctx.clone()), "Cmd+B o deschide și pe fereastră îngustă");
-        h2.render().unwrap().save(out.join("responsive-1000-open.png")).unwrap();
+        assert!(!h2.state().sidebar_visible(&h2.ctx.clone()));
+        h2.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::B);
+        h2.run_steps(3);
+        assert!(h2.state().sidebar_visible(&h2.ctx.clone()));
+        h2.state_mut().project.as_mut().unwrap().current_step = 2;
+        h2.run_steps(3);
+        h2.render().unwrap().save(out.join("responsive-step2-1000.png")).unwrap();
+        // Interfață mărită (zoom 1.6 => ~625 pt lățime): butonul de ascundere merge în continuare
+        let ctx = h2.ctx.clone();
+        let mut s = h2.state().settings.clone();
+        s.ui_scale_pct = 160;
+        h2.state_mut().set_settings(&ctx, s);
+        h2.run_steps(3);
+        h2.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::B);
+        h2.run_steps(3);
+        assert!(!h2.state().sidebar_visible(&ctx), "comutarea barei merge și când interfața e mare");
+        h2.render().unwrap().save(out.join("responsive-1000-zoom160.png")).unwrap();
         for d in [d1, d2] {
             let _ = std::fs::remove_dir_all(d);
         }
+    }
+
+    /// Comutatorul de limbă (buton ca cel de temă) trece RO ↔ EN.
+    #[test]
+    fn language_switch_toggles_between_ro_and_en() {
+        use egui_kittest::kittest::Queryable;
+        let dir = std::env::temp_dir().join(format!("hidrocalc-ls-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("l.db");
+        let mut h = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1360.0, 900.0))
+            .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
+        sample(h.state_mut());
+        h.run_steps(2);
+        assert_eq!(h.state().settings.lang, Lang::Ro);
+        h.get_by_role_and_label(egui::accesskit::Role::Button, "Switch to English").click();
+        h.run_steps(2);
+        assert_eq!(h.state().settings.lang, Lang::En);
+        h.get_by_role_and_label(egui::accesskit::Role::Button, "Treci la română").click();
+        h.run_steps(2);
+        assert_eq!(h.state().settings.lang, Lang::Ro);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     /// Desen și editare fără mouse în planul 2D: tronson din tastatură, selectare și mutare.

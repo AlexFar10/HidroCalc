@@ -132,6 +132,9 @@ fn step2(ui: &mut Ui, t: &I18n, p: &mut ProjectData) -> Option<u32> {
             }
             let kinds: Vec<(String, String)> = INSTITUTION_DEFAULTS.iter().map(|i| (i.kind.to_string(), i.kind.to_string())).collect();
             let mut remove = None;
+            // Tabelul lat se derulează orizontal în propriul card (nu iese din fereastră).
+            let table = egui::ScrollArea::horizontal().id_salt("public_consumers_scroll").scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible).auto_shrink([false, true]);
+            table.show(ui, |ui| {
             egui::Grid::new("public_consumers").striped(true).spacing([6.0, 6.0]).min_col_width(60.0).show(ui, |ui| {
                 for h in [
                     t.t("step2.colInstitutionType"),
@@ -189,6 +192,7 @@ fn step2(ui: &mut Ui, t: &I18n, p: &mut ProjectData) -> Option<u32> {
                     }
                     ui.end_row();
                 }
+            });
             });
             if let Some(i) = remove {
                 c.public_consumers.remove(i);

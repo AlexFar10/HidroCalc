@@ -210,7 +210,7 @@ fn results_table(ui: &mut Ui, t: &I18n, p: &mut ProjectData, st: Option<&mut Net
         ("colLambda", true),
         ("colRegim", true),
     ];
-    egui::ScrollArea::horizontal().id_salt(("net_table", editable)).show(ui, |ui| {
+    egui::ScrollArea::horizontal().id_salt(("net_table", editable)).scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible).auto_shrink([false, true]).show(ui, |ui| {
         egui::Grid::new(("net_grid", editable)).striped(true).spacing([8.0, 4.0]).show(ui, |ui| {
             if editable {
                 ui.label("");
