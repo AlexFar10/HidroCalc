@@ -38,6 +38,8 @@
     "focusHint": "Press Tab until you reach the drawing, or click it, to give it focus."
   },
   "exp": {
+    "docMemoriu": "Technical report",
+    "docMemoriuDesc": "Word document with the project data and standard texts; missing fields are highlighted in yellow.",
     "afterSections": "Available once you define sections in Network",
     "title": "Export",
     "hint": "Pick what to export: one at a time with each row's button, or several at once.",

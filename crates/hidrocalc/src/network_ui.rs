@@ -49,6 +49,7 @@ pub enum ExportId {
     Dxf3d,
     Glb,
     Stl,
+    DocMemoriu,
 }
 
 impl ExportId {
@@ -63,6 +64,7 @@ impl ExportId {
             ExportId::Dxf2d | ExportId::Dxf3d => "dxf",
             ExportId::Glb => "glb",
             ExportId::Stl => "stl",
+            ExportId::DocMemoriu => "docx",
         }
     }
     /// Sufixul numelui de fișier (după numele proiectului).
@@ -70,6 +72,7 @@ impl ExportId {
         match self {
             ExportId::Json => "",
             ExportId::Png2d | ExportId::Dxf2d => " - plan 2D",
+            ExportId::DocMemoriu => " - Memoriu tehnic",
             _ => " - 3D",
         }
     }
@@ -684,7 +687,7 @@ fn export_panel(ui: &mut Ui, t: &I18n, p: &ProjectData, st: &mut NetworkUi) {
                 (ExportId::Stl, "stl", drawing),
             ],
         ),
-        ("exp.sectionDocuments", vec![]),
+        ("exp.sectionDocuments", vec![(ExportId::DocMemoriu, "docMemoriu", Avail::Yes)]),
     ];
     let available: Vec<ExportId> = sections.iter().flat_map(|(_, rows)| rows.iter()).filter(|(_, _, a)| *a == Avail::Yes).map(|(id, _, _)| *id).collect();
     st.export_sel.retain(|id| available.contains(id));

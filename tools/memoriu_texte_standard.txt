@@ -1,0 +1,445 @@
+# Texte standard pentru șablonul Memoriului tehnic, extrase din documentul-model.
+# Format: secțiuni „### NUME”; fiecare linie = un paragraf; `{variabila}` se completează la export.
+# Editează aici, apoi rulează tools/build_memoriu_template.py.
+
+### LEGISLATIE
+H.G.R. nr. 766/1997din 21/11/1997pentru aprobarea unor regulamente privind calitatea în Constructii. Publicat în Monitorul Oficial, Partea I nr. 352 din 10/12/1997;
+H.G. nr. 343/2017 pentru modificarea Regulamentului de recepție a lucrărilor de construcții și instalații aferente acestora, aprobat prin H.G. 273/1994 Regulament de recepţie a lucrărilor de construcţii şi instalaţii aferente acestora.
+STAS 1343/1-2006 – Alimentări cu apă
+SR 1478:2025 – Alimentări cu apă la construcții civile și industrial
+SR 4163/1-95 – Alimentări cu apă. Rețele de distribuție. Prescripții fundamentale de proiectare.
+SR 4163/2-95 – Alimentări cu apă. Rețele de distribuție. Prescripții de calcul.
+SR 4163/3-95 – Alimentări cu apă. Rețele de distribuție. Prescripții de execuție și exploatare.
+SR EN 805:2000 – Alimentări cu apă. Condiții pentru sistemele și componentele exterioare clădirilor
+STAS 4165-88 – Rezervoare. Prescripții generale
+STAS 4273-83 – Construcții hifrotehnice
+STAS 6054-77 – Teren de fundare. Adâncimi maxime de îngheț. Zonarea teritoriului.
+SR EN 124-2015 – Dispozitive de acoperire și de închidere cămine de vizitare și guri de scurgere în zone carosabile și pietonale.
+STAS 9312/87 – Subtraversări de căi ferate și drumuri cu conducte. Prescripții de proiectare.
+STAS 6002/88 – Alimentări cu apă. Cămine.
+SR 8591-97 "Reţele edilitare subterane. Condiţii de amplasare”
+STAS 9570-1/1989 "Marcarea şi reperarea reţelelor de conducte şi cabluri în localităţi"
+NP 133/2022 – Ghid privind proiectarea, execuția și exploatarea sistemelor de alimentare cu apă și canalizare a localităților.
+NP 086/2005 “Normativ pentru proiectarea,executarea si exploatarea instalatiilor de stingere a incendiilor”
+P118/2-2013 – Normativ privind securitatea la incendiu a construcțiilor.
+I9/2015 – Normativ privind proiectarea și executarea instalațiilor sanitare.
+Ordinul nr. 2960 din 15 noiembrie 2022
+I22/99 – Normativ pentru proiectarea și executarea conductelor de aducțiune și a rețelelor de alimentare cu apă și canalizare a localităților. - Alte reglementări tehnice aplicabile, în măsura în care prevederile acestora nu contravin normativelor și standardelor în vigoare.
+P66-2001 – Normativ pentru proiectarea și executarea lucrărilor de alimentare cu apă și canalizare a localităților din mediul rural.
+HG nr.930/2005 – Norme speciale privind caracterul și mărimea zonelor de protecție sanitară și hidrogeologică.
+GP 106/2004 „Ghid de proiectare, executie si exploatare a lucrarilor de alimentare cu apa si canalizare in mediu rural”
+DIN 8074-1999 „Polyethylene (PE) pipes”
+Hotărârea nr. 101 din 1997 „Norme speciale privind caracterul şi mărimea zonelor de protecţie sanitară”
+Legea nr. 10/1995 privind calitatea în construcţii (consolidată în 30.08.2022).
+
+### EXPLOATARE
+Exploatarea sistemelor de alimentări cu apă
+Instrucțiuni de exploatare și întreținere
+Este documentul sintetic prin care se pune în practica sistemul calității la furnizorul de apă și care trebuie să stea la baza exploatării sistemelor de alimentări cu apă.
+Instrucțiunile de exploatare și întreținere specifice trebuie să urmărească modul de funcționare al rețelei în situație normală sau în situații speciale de criză (fenomene/situații extraordinare cărora trebuie să le facă față sistemul).
+Instrucțiunile de exploatare și întreținere specifice
+Se întocmește pentru fiecare obiect din cadrul sistemului de alimentări cu apă, și trebuie să conțină detaliile tehnologice caracteristice obiectului respectiv.
+Planul de mentenanță și procedurile de intervenție (planificare și de urgență)
+Pe baza instrucțiunilor de exploatare și întreținere specifice, operatorul de sistem are obligația să întocmească planul de mentenanță și procedurile de intervenție (planificate și de urgență) pentru fiecare obiect din componența sistemului de alimentare cu apă. Intervențiile în sistemul de alimentare cu apă trebuie realizate cu grija prevenirii oricărui risc de alterare a calității apei distribuite. În acest scop:
+la pregătirea intervențiilor trebuie să se identifice și toate riscurile de alterare a calității apei și să asigure informarea altor servicii și a clienților care ar putea fi implicați;
+trebuie ca realizarea fiecărei intervenții să fie asigurată în conformitate cu documentele operaționale pentru a asigura în permanență prezervarea calității apei potabile distribuite.
+Intervențiile în sistemul de alimentare cu apă
+Operatorul sistemului de alimentare cu apă are obligația ca toate intervențiile în sistemul de alimentare cu apă să se execute de către personal calificat și cu respectarea legislației specifice de protecție a muncii.
+Intervențiile în sistemul de alimentare cu apă se realizează cu respectarea legislației din domeniile specifice.
+Înregistrarea documentelor
+Operatorul sistemului de alimentare cu apă are de asemenea obligația să înregistreze toate documentele întocmite cu ocazia intervențiilor în sistem, atât la nivel central, cât și la nivelul fiecărui obiect din sistem (în registrul de exploatare al obiectului respectiv).
+Analiza informațiilor conținute în documentele de intervenție trebuie să stea la baza adaptării planului de mentenanță și a procedurilor de intervenție în vederea ridicării calității serviciilor oferite clienților.
+Exploatarea aducțiunilor
+Se realizează pe baza instrucțiunilor de exploatare și întreținere specifice. Se vor aplica următoarele măsuri:
+Instrucțiunile de exploatare trebuie să conțină un plan cu marcarea tuturor elementelor constructive: poziția conductei (elemente de marcare), cămine, subtraversări; dimensiunea elementelor constructive, poziția echipamentelor de măsurat, mărimea zonei de pozat-șanț, zonă de protecție sanitară.
+un profil tehnologic general la scară convenabilă va marca presiunea de lucru, presiunea de încercare, construcțiile anexe cu detalii. Va avea marcată și capacitatea de transport rezultată în urma operațiilor de recepție.
+se va verifica lunar, sau după evenimente importante, debitul transportat. Dacă nu funcționează debitmetrele, va fi folosit rezervorul, măsurând nivelul atunci când plecarea este închisă pentru 2-3 ore. Dacă sunt manometre instalate, trebuie măsurată și presiunea în punctele caracteristice. Dacă nu sunt, atunci vor fi montate și recuperate după măsurătoare. Se va putea verifica linia piezometrică pentru debitul transportat și pot fi corectate unele anomalii (consum ilegal de apă, cât, unde, înfundarea conductei, capacitate disponibilă, etc.).
+cel puțin o dată pe lună va fi parcurs traseul conductei și verificată starea terenului, prezența unor substanțe străine ce pot periclita la limită calitatea apei prin infiltrare, execuția de construcții/depozitarea de materiale pe conductă, starea căminelor și vanelor; orice anomalie constatată se remediază rapid.
+orice modificare în funcționarea conductei sau alcătuirea constructivă va fi concretizată și în detaliile din cartea construcției.
+operatorul sistemului va avea în dotare sisteme de reparare rapidă a avariilor la conductă (bucăți de conductă pentru fiecare tronson de presiune, elemente de etanșare rapidă, tip bandaj, pe diametre, scule de intervenție. Orice intervenție pentru reparație va fi marcată pe profilul conductei, va căpăta o fișă de referință cu descrierea lucrării și estimarea costului intervenției. Lunar se va face un bilanț al apei transportate, furnizate, plătite de consumator.
+după intervenție se va reface sistemul de detecție a poziției conductei. Dacă țeava are un sistem special de protecție la coroziune acesta se va reface la o calitate identică sau chiar mai bună cu cea inițială.
+după fiecare intervenție se va spăla și dezinfecta conducta, mai ales dacă dezinfectarea apei se face la stația de tratare, deci înainte de rezervor.
+în condiții speciale de teren va fi verificată eficiența lucrărilor suplimentare prevăzute (tasare teren, spălare umplutură, deformare cămine, lipsă etanșare, etc.).
+se vor respecta reglementările tehnice specifice, privind reabilitarea conductelor pentru transportul apei, aplicabile, în vigoare.
+Exploatarea rezervoarelor de înmagazinare a apei
+Se realizează pe baza instrucțiunilor de exploatare și întreținere specifice. Se vor aplica următoarele măsuri:
+Se verifică periodic, anual, starea zonei de protecție și starea terenului. Apariția unor zone cu iarbă mai verde sau eventuale denivelări chiar în afara zonei de protecție, arată pierderi de apă - în acest caz, măsurile de verificare și protecție trebuie să fie imediate.
+Rezervorul se curăță periodic - de regulă, anual. Se golește câte o cuvă sau se trece pe conducte de ocolire pe o perioadă determinată (de preferință nu în perioada de consum maxim de apă). În aceste situații vor fi luate măsuri suplimentare pentru combaterea incendiului, deoarece nu mai există rezerva de apă pentru combaterea focului - atunci când există o singură cuvă.
+Dacă pe pereți s-a format un strat de depunere (substanța organică, biofilm activ - de regulă), acesta se spală cu jet puternic de apă (20-100 bari) sau se răzuie cu mijloace manuale sau mecanice (fără zgârierea pereților), după care se spală cu apă. Apoi se curăță radierul, totul fiind evacuat la canalizare sau în iaz (batal) amenajat special. Se dezinfectează, se spală și se redă în folosință, conform prevederilor reglementările tehnice specifice, în vigoare. Plecarea din rezervor este o secțiune de control a calității apei distribuite. Se verifică funcționarea hidrantului de alimentare a autospecialei.
+Cu ocazia golirii rezervorului, se verifică starea pereților și mai ales a tavanului, care poate fi degradat sub influența clorului de la dezinfectarea apei. Dacă este cazul, se reface porțiunea deteriorată, cu materiale netoxice, cu întărire rapidă. Se verifică periodic starea izolației hidrofuge și a ventilației (în special sită de protecție).
+La rezervoarele metalice, se verifică trimestrial etanșeitatea îmbinărilor pereților, luând măsuri de strângere a șuruburilor în zonele afectate. Totodată, la apariția urmelor de rugină, rezervorul va intra imediat în refacere.
+Se verifică trimestrial pH-ul apei și conținutul de Zn în apa rețelei, în cazul în care apa este agresivă și nu au fost luate măsuri de tamponare.
+Se verifică eficiența amestecării clorului de dezinfectare în apă livrată. În cazul în care se elimină mult clor din rezervor din cauza aerării puternice la intrare, se caută soluții pentru remediere. Clorul va fi introdus tot timpul prin barbotare, printr-o conductă cu capătul în apă.
+Înaintea perioadei reci se face o verificare a termoizolației și pe durata iernii se verifică săptămânal dacă în rezervor se formează gheață (mai ales la apa provenită din apă de suprafață). Se pun în aplicare soluții de control și combatere, cum sunt: recircularea apei, insuflarea cu aer comprimat, agitare mecanică, îmbunătățirea termoizolației.
+Accesul în rezervorul de apă nu este permis decât personalului autorizat, sănătos sanitar și cu îmbrăcăminte și încălțăminte dezinfectată.
+În caz de poluare aeriană importantă, sunt necesare măsuri de filtrare activă/pasivă a aerului aspirat în rezervor la golirea acestuia (cel puțin o dată pe zi).
+Exploatarea rețelelor de distribuție
+Reprezintă o operațiune complicată deoarece rețeaua de distribuție:
+Este obiectul de legătură furnizor-consumator, și sursa majorității conflictelor;
+Este obiectul cel mai extins și mai solicitat;
+Este obiectul cel mai mobil - practic, dezvoltarea lui este continuă de unde apar noi relații furnizor - consumator;
+Este ultimul obiect al sistemului și problemele de calitate/cantitate din amonte se răsfrâng asupra rețelei. În plus, apar probleme specifice rețelei care și ele pot influența negativ celelalte elemente;
+Este susceptibilă de creșterea pierderilor de apă în sistem și a risipei de apă;
+Poate să producă probleme de deteriorare a calității apei, ca urmare a unei rețele incorect alcătuite sau a unei ape incomplet tratate ca urmare a modificării calității apei la sursă sau staționării îndelungate a apei în rețea.
+Exploatarea rețelei de distribuție se realizează pe baza instrucțiunilor de exploatare și întreținere specifice. Măsurile curente pentru urmărirea funcționării corecte a rețelei sunt:
+Verificarea presiunii în rețea - se poate face sistematic sau prin controlul sesizărilor unor consumatori asupra lipsei de presiune. Ca urmare a acestor modificări/măsurători, este rațional să se realizeze o hartă cu linii de egală presiune la funcționare cu debit maxim. În acest mod, la o reclamație curentă este mai ușor de confirmat dacă ceva nu este în regulă. Totodată se pot controla mai ușor avizele date pentru racordarea la noi consumatori (debit, presiune la branșament).
+Verificarea periodică a calității apei în rețea - numărul minim de probe este prevăzut în reglementările tehnice specifice, aplicabile, în vigoare. Operatorul sistemului are libertatea să poată controla mai des. Se va verifica la capetele de rețele clorul remanent - când doza este mai mică de 0,2 mg/l, vor fi verificate pe flux posibilele cauze și luate măsuri (tratare incompletă, doza prea mică de clor, apariția unor consumatori de clor - azotați, etc.).
+Verificarea funcționării corecte a cișmelelor - modul de închidere, curățenia din jurul lor, evacuarea apei risipite, folosirea apei pentru alte scopuri decât pentru cele pentru care a fost destinată (cantitatea respectivă va lipsi de la un alt consumator).
+Urmărirea funcționării corecte a hidranților, cu privire la: etanșeitate, integritate, verificarea stării de funcționare. Semestrial, fiecare hidrant va fi deschis 1-5 minute, pentru verificarea lui și pentru spălarea rețelei. Se verifică vizibilitatea indicatorilor de poziție.
+Citirea contoarelor din rețea, verificarea integrității echipamentului și efectuarea periodică a bilanțului debitului de apă, realizat prin verificarea normei medii echivalente de consum de apă. Aceasta servește la: compararea valorilor de calcul, compararea cu norma general acceptată, verificarea pierderii de apă, asigurarea unei baze statistice de calcul pentru o normă de consum departamentală.
+Realizarea intervențiilor în rețea pentru realizarea de noi branșamente, remedierea unor avarii, realizarea de lucrări noi de extindere.
+Spălarea rețelei, sistematic (de regulă anual) sau după reparații. În acest scop vor fi folosite cișmelele sau hidranții, pentru a produce, pe tronsoane controlate, viteze de curgere a apei de peste 1 m/s. Dacă acest lucru nu este posibil, se va proceda la spălare folosind și aer comprimat introdus printr-o cișmea de capăt de tronson.
+Se vor respecta reglementările tehnice specifice, privind reabilitarea conductelor pentru transportul apei, aplicabile, în vigoare.
+Exploatarea stației de tratare
+În ansamblu și pe fiecare dintre obiecte se va face cu respectarea prevederilor instrucțiunilor de exploatare și întreținere, care va fi continuu perfecționat funcție de modificările cerute de calitatea apei brute, schimbarea reactivilor, modificarea exigențelor asupra apei tratate, etc.
+Totodată exploatarea trebuie concretizată în documente ce conțin parametri de lucru ce pot deveni parametri de proiectare/exploatare pentru stații noi, chiar de dimensiuni mai mari. Stația de tratare poate fi privită, în unele cazuri, ca o instalație pilot, pentru apa râului/lacului respectiv.
+Exploatarea începe odată cu începerea lucrărilor de recepție; după recepție, stația de tratare începe să producă apă pentru consumatori.
+În momentul începerii producției vor trebui finalizate următoarele documente, care fac parte din instrucțiunile de exploatare și întreținere:
+Concluziile documentului de recepție provizorie a lucrărilor, ce vor fi înlocuite după un an cu concluziile finale; vor conține toate elementele constructive, consecințele abaterilor și modul lor de soluționare, eventualele restricții acceptate;
+Modul de funcționare a aparaturii de măsură și control;
+Modul de verificare a parametrilor de funcționare a stației;
+Procedura de control a calității apei - ce parametri se verifică local, ce parametri și cum se determină în alt laborator. În acest caz, se va da și procedura, inclusiv frecvența de prelevare, păstrare, și transport a probelor de apă.
+Măsurile de protecția muncii și măsurile de igienă ce vor trebui respectate în exploatare.
+Modul în care sunt distribuite sarcinile asupra personalului de supraveghere și modul de primire a serviciilor și de raportare a îndeplinirii.
+Modul de ținere a evidenței activității: forma de înregistrare (pe hârtie, pe calculator), cine face înregistrarea, la ce interval, cum se păstrează datele, etc.
+Punerea efectivă în funcțiune se va face după obținerea avizului de funcționare dat de autoritatea abilitată. Se va verifica modul în care personalul de exploatare cunoaște procedurile de exploatare a stației și sistemului de alimentare cu apă.
+În urmărirea funcționării stației, observațiile se pot împărți în două grupe:
+urmărire generală a funcționării stației;
+urmărirea funcționării fiecărui obiect al stației.
+Urmărirea generală a stației presupune:
+controlul funcționării tuturor obiectelor componente;
+controlul stării zonei de protecție sanitară;
+controlul stării de funcționare a aparaturii de măsură și control;
+controlul stocului de reactivi;
+controlul modului de funcționare a sistemului de evidență a funcționării;
+existența materialului de protecția muncii;
+controlul stării de sănătate a personalului de exploatare;
+verificarea pregătirii profesionale a personalului;
+verificarea măsurilor pentru funcționare în cazuri extreme (viitură, iarnă, secetă);
+controlul indicatorilor de performanță ai stației:
+calitatea apei (numărul de zile cu parametri depășiți);
+cauzele producerii depășirilor (măsuri luate, efect);
+debitul de apă tratată;
+consumul propriu de apă;
+consumul de energie, kWh/m3;
+consumul de reactivi, g/m3;
+starea reparațiilor începute în stație și compararea cu graficul de execuție;
+controlul penalizărilor date pentru neconformare;
+planificarea reparațiilor și a modului de lucru pe perioada respectivă.
+Pentru obiectele componente ale stației, măsurile urmărite și realizate sunt următoarele.
+Pentru deznisipatoare:
+Se verifică viteza medie de curgere a apei;
+Se verifică modul de lucru a vanelor;
+Se verifică grosimea stratului de nisip;
+Se curăță nisipul din deznisipator (manual cu sau fără golirea apei, mecanică mai rar, sau hidraulică). Nisipul scos se depozitează în vederea folosirii. Cantitatea se evaluează și se estimează eficiența de reținere a nisipului. Estimarea se poate face mai exact măsurând turbiditatea apei la intrare și ieșire.
+Se deblochează priza de gheață, plutitorii, aluviunile mari.
+Se corectează efectul distructiv al apelor mari/mici asupra zonei prizei și deznisipatorului (când acestea sunt pe același amplasament).
+Se verifică măsurile de protecție a calității apei pe râu în amonte (de regulă există sisteme de avertizare asupra calității apei). Tendințele de apariție a unor activități ce pot produce poluări accidentale trebuie semnalate organelor competente asupra protecției calității apei.
+Pentru decantoare (de regulă decantoare verticale, decantoare cu lamele și mai rar decantoare orizontale):
+Se verifică starea construcției decantorului;
+Se verifică starea de funcționare a vanelor; acționarea lor la fiecare 2 săptămâni, pentru a evita blocarea lor;
+Se controlează eficiența limpezirii (turbiditate la intrare și ieșire) pe fiecare cuvă și în acest fel posibil și distribuția apei între cuve;
+Se verifică mărimea debitului pe fiecare decantor;
+Se verifică încărcarea hidraulică și se compară cu valorile de referință;
+Se verifică modul de curgere a apei în decantor (la cele orizontale);
+Se verifică umplerea cu suspensii a volumului destinat din decantor;
+Se verifică modul de curățire (durată, eficiență, apă pierdută);
+Se verifică grosimea stratului de gheață și influența asupra sistemului de colectare a apei limpezite (cu conducte perforate, așezate la 30-40 cm sub nivelul apei). Decantoarele cu lamele trebuie ferite de îngheț;
+Se verifică starea lamelelor. Se verifică împiedicarea scăderii nivelului în decantor pentru protejarea lamelelor contra gheții, spălarea periodică etc.
+Pentru filtrele lente:
+Se verifică starea de funcționare a cuvelor; durata medie de funcționare, durata medie de curățire;
+Se verifică nivelul nisipului și dinamica reducerii lui;
+Se verifică încărcarea hidraulică (viteza de filtrare) pe cuve și se compară cu valoarea de referință;
+Se verifică eficiența cuvelor (turbiditatea apei la intrare și ieșire);
+Se verifică periodic, la început, după 3 - 4 zile și la mijlocul duratei de filtrare, reducerea conținutului în microorganisme;
+Se controlează modul de curățire a filtrului;
+Se verifică mărimea pierderii de sarcină în filtru, la începutul/sfârșitul ciclului de filtrare;
+Se verifică formarea stratului de gheață;
+Se verifică manevrabilitatea tuturor vanelor prevăzute în instalație;
+Se determină producția medie de apă, m3/zi-m2;
+Se controlează colmatarea progresivă a stratului de nisip în vederea stabilirii momentului în care trebuie scos nisipul pentru spălare generală și refacere (normal la 5 - 10 ani).
+Totdeauna umplerea filtrului cu apă se face de jos în sus, pentru eliminarea aerului din porii stratului de nisip.
+Pentru filtrele rapide, exploatarea este relativ pretențioasă, și trebuie executată în strictă concordanță cu instrucțiunile de exploatare elaborate pentru acestea. Instrucțiunile de exploatare pentru filtrele rapide trebuie să conțină referiri la:
+procesul de spălare (intervale, intensități, rețete);
+procesul de tratare-conform prevederilor tehnice specifice, aplicabile, în vigoare.
+Întocmit,
+{proiect.proiectant}
+
+### CAIET_TERASAMENTE
+1.6.1.1 Generalități
+Dispoziții generale pentru executant
+Pentru realizarea în bune condiţii a tuturor lucrărilor care fac obiectul prezentei investiţii, executantul va desfăşura următoarele activităţi:
+studierea proiectului pe baza pieselor scrise şi desenate din documentaţie, menţionate în borderou, precum şi a legislaţiei, standardelor şi instrucţiunilor tehnice de execuţie la care se face trimitere, astfel încât la începerea execuţiei să poată fi clarificate toate lucrările ce urmează a fi executate;
+se va sesiza proiectantul în termen legal în legătură cu eventualele neconcordanţe între elementele grafice şi cifrice sau va prezenta obiecţiuni în vederea rezolvării şi concilierii celor prezentate.
+În timpul execuţiei:
+se va asigura aprovizionarea ritmică cu materialele şi produsele cuprinse în proiect în cantităţile şi sortimentele necesare;
+se va sesiza proiectantul în cazul imposibilităţii procurării anumitor materiale şi produse prevăzute în documentaţia de proiectare prezentând în acelaşi timp o ofertă a altui material similar, cu caracteristici cel puţin identice din punct de vedere tehnic şi economic cu cel prevăzut în proiect;
+se va asigura putere de muncă şi mijloace de mecanizare necesare în concordanţă cu graficul de execuţie şi cu termenele parţiale stabilite;
+se vor respecta cu stricteţe tehnologia şi caracteristicile de lucru menţionate în proiect (tipul materialului, diametre, pante, adâncimea de pozare, pat de material, montaj, etc.).
+Executantul lucrărilor este obligat să păstreze pe şantier, la punctul de lucru și pe toată durata de execuţie şi a probelor tehnologice, întreaga documentaţie pe baza căreia se execută lucrările respective, inclusiv dispoziţiile de şantier date pe parcurs.
+Această documentaţie, împreună cu procesele verbale de lucrări ascunse, documentele care atestă calitatea materialelor, instalaţiilor, celelalte documente care atestă buna execuţie sau modificările stipulate de proiectant în urma deplasărilor în teren, vor fi puse la dispoziţia organelor de îndrumare - control. Modificările de orice fel ale prevederilor proiectului tehnic se vor executa numai cu avizul proiectantului.
+Modificările consemnate în caietul de procese verbale vor fi stipulate şi în partea desenată a documentaţiei, în scopul informării beneficiarului la punerea în funcţiune despre elementele reale din teren. În caz contrar, executantul devine direct răspunzător de eventualele consecinţe negative cauzate de nerespectarea proiectului.
+Dispoziții generale pentru beneficiar
+Beneficiarului, prin dirigintele de şantier, îi revin următoarele sarcini:
+Recepţia documentaţiei tehnice primite de la proiectant şi verificarea pieselor scrise şi desenate, precum şi a corespondenţei dintre acestea, exactitatea elementelor principale (lungimi, diametre, trasee, etc.);
+Sesizarea proiectantului de orice neconcordanţă sau situaţie specifică apărută la execuţie, în scopul analizei comune şi găsirii rezolvării urgente;
+Anunţarea proiectantului în vederea prezentării la fazele determinante: trasare reţele, punere în funcţiune sau alte situaţii;
+Neacceptarea modificărilor faţă de proiectul tehnic fără avizul proiectantului;
+Urmărirea ritmică a execuţiei lucrărilor în scopul respectării documentaţiei tehnice, participarea conform sarcinilor sale de serviciu la controlul calităţii lucrărilor, la confirmarea lucrărilor ascunse şi a cantităţilor de lucrări efectuate de executant la nivelul fiecarei faze determinante;
+Neacceptarea sub nici un motiv a trecerii la o altă fază sau recepţia lucrărilor executate fără atestarea tuturor elementelor care concură la o bună calitate a materialelor şi execuţiei;
+Pentru orice nerespectare a prevederilor proiectului tehnic, beneficiarul, prin dirigintele de şantier, va solicita sprijinul proiectantului în scopul clarificării problemelor.
+1.6.1.2 Standarde, normative şi prescripții care guvernează execuția de ansamblu a lucrării
+C169-88 - Normativ privind executarea lucrărilor de terasamente pentru realizarea fundaţiilor, construcţiilor civile şi industriale;
+Legea 50-1991 - Legea privind autorizarea executării construcţiilor cu toate modificările şi completările aferente;
+În timpul executării reţelelor hidraulice, se vor respecta normele generale şi specifice de protecţia muncii. Se vor avea în vedere următoarele:
+Legea securităţii şi sănătăţii în muncă nr. 319/2006 şi Normele metodologice de aplicare, elaborate de Ministerul Muncii şi Protecţiei Sociale;
+Normele generale de protecţia muncii elaborate în comun de Ministerul Muncii, Solidarităţii Sociale şi Familiei şi Ministerul Sănătăţii;
+Norme specifice de protecţie a muncii pentru construcţii hidroedilitare;
+Protecţia muncii se va asigura şi prin folosirea dispozitivelor de inventar specifice, a semnelor convenţionale şi a indicatoarelor de securitate.
+1.6.1.3 Lucrări premergătoare
+Înainte de începerea execuţiei, beneficiarul, împreună cu executantul lucrării vor convoca pe şantier delegaţi de la toate unităţile deţinătoare de gospodării subterane şi supraterane, cu ajutorul cărora se vor identifica şi marca pe teren toate punctele de apropiere sau intersecţie a traseului lucrărilor proiectate cu reţele sau construcţii subterane existente în zonă şi se vor stabilii într-un proces verbal măsurile de siguranţă necesare a fi luate pentru evitarea unor eventuale deranjamente sau accidente.
+Pentru depistarea gospodăriilor subterane a căror poziţie nu se cunoaşte cu exactitate se vor face sondaje manuale în prezenţa delegatului unităţii ce administrează instalaţiile respective.
+În cazul în care, pe amplasamentul pe care urmează a se executa lucrări de terasamente sunt informaţii asupra posibilităţii existenţei unor corpuri explozibile, se va solicita în prealabil prezenţa organelor de specialitate, iar dacă în timpul executării săpăturilor se întâlnesc astfel de corpuri explozibile, se vor opri imediat lucrările, anunțându-se de urgenţă beneficiarul şi proiectantul lucrării pentru adoptarea de măsuri corespunzătoare.
+1.6.1.4 Trasarea lucrărilor pe teren și pregătirea traseului
+Trasarea conductelor pe teren se va face pe baza datelor de pe planul de situaţie şi a sondajelor efectuate pe teren în zona gospodăriilor subterane existente.
+Traseul amplasamentului conductelor pe teren se va materializa prin ţăruşi vizibili.
+La trasarea lucrărilor pe teren se va ţine cont de următoarele:
+Nivelmentul de-a lungul traseului să fie efectuat cu precizia stabilită în proiect;
+Să se prevadă repere provizorii de-a lungul traseului, legate de reperele definitive;
+Să se marcheze pe teren intersecţiile traseului canalului cu traseele construcţiilor existente;
+Să se marcheze pe teren intersecţiile traseului canalului cu traseele construcţiilor existente subterane;
+Să se preia de către executant sau beneficiar reperele lucrării materializate pe teren.
+Trebuie prevăzut ca lucrările pregătitoare să cuprindă pregătirea şi curăţarea traseului de tot ce ar putea împiedica buna desfăşurare a lucrărilor.
+1.6.1.5 Executarea săpăturilor
+Lucrările de săpare a tranşeelor şi a gropilor de fundaţii se execută în conformitate cu planurile de săpături din proiect şi a tehnologiei de execuţie indicate în specificaţiile acestuia. Antreprenorul poate aduce modificări în privinţa tehnologiei de execuţie cu obligaţia asigurării cotei de fundare, dimensiunilor construcţiei şi stabilităţii săpăturilor.
+Lucrările se vor executa întotdeauna din aval în amonte. Tranşeele pentru montarea canalelor se execută cu pereţi verticali sau în taluz, în funcţie de natura solului şi spaţiul disponibil pentru executarea săpăturilor. La adâncimi mari şi în cazul unor condiţii hidrologice nefavorabile, tranşeele se execută de multe ori combinat: partea superioară se execută mecanizat (în taluz), iar partea inferioară manual (cu pereţi verticali).
+Săpăturile se pot executa manual sau mecanizat. Săpăturile în gropi deschise se vor executa numai în pământuri fără apă subterană, sau cu apă subterană epuizată, printr-unul din procedeele de mai jos:
+pompare directă din incinta săpăturii cu colectarea apei prin şanţuri şi conducerea ei spre puţuri de epuisment;
+pompare din puţuri forate echipate cu coloane filtrante;
+colectarea şi pomparea prin reţele de filtre aciculare;
+alte sisteme de epuizare, care nu fac obiectul prezentului caiet de sarcini şi pentru care se întocmesc caiete speciale.
+Săpăturile vor fi executate în funcţie de prevederile proiectului şi normativului C169:
+Cu taluz vertical, fără sprijiniri, de obicei în gropi de fundare de mică adâncime sau în terenuri de conşistenţă foarte ridicată (marnă, roci stâncoase, argile tari);
+Cu taluz vertical cu pereţi sprijiniţi cu dulapi de lemn sau metalici, orizontali sau verticali, cu filete şi şpraiţuri (numai reglabile). Filetele, cadrele de susţinere, şpraiţurile şi tehnologia de execuţie se vor preciza de către antreprenor, care are obligaţia să execute săpătura la dimensiunile cerute prin proiect.
+Cu taluz înclinat, de regulă cu borne de 0,5 - 1,0 m lăţime la fiecare 2 m înălţime, înclinarea taluzurilor şi lăţimea bornelor se adoptă în funcţie de natura terenului. Antreprenorul poate aduce modificări elementelor de mai sus, cu condiţia asigurării stabilităţii săpăturilor pe toată durata execuţiei lucrărilor.
+Antreprenorul este obligat să urmărească în permanenţă stabilitatea pereţilor săpăturilor sprijiniţi şi să ia operativ măsurile necesare. Antreprenorul este obligat să delimiteze conturul săpăturilor, prin parapeţi sau alte mijloace de protecţie, în scopul prevenirii accidentelor și al bunei desfăşurări a circulaţiei, etc. Se vor amenaja de asemenea, oriunde este necesar, pasarele provizorii.
+Se va respecta în mod obligatoriu cota de fundare prevazută în proiect. Modificarea acesteia se va putea face numai cu acordul Investitorului şi Consultantului, acord care atrage după sine şi dreptul antreprenorului la plata lucrărilor suplimentare în cazul coborârii cotei.
+Săpăturile se vor executa manual sau mecanizat aşa cum va stabilii Antreprenorul, cu următoarele condiţii:
+să se respecte planul de săpătură;
+să se asigure forma plană şi regulată a platformelor şi taluzurilor;
+la săpăturile ce se efectueaza în apropierea lucrărilor existente, acestea să nu fie efectuate de mijloace de săpare mecanică;
+Antreprenorul nu va solicita costuri suplimentare faţă de oferta adjudecată.
+Depozitarea pământului săpat se va face în afara amplasamentului construcţiei, nefiind permisă sub nici un motiv depozitarea, nici chiar provizorie, în apropierea săpăturilor pentru a nu se declanşa fenomene de alunecare sau surpare.
+Înainte de începerea lucrărilor de excavaţii antreprenorul va întocmi şi va supune spre aprobare Investitorului un grafic de execuţie a cărui concepţie să ţină seama de următoarele:
+la obiecte apropiate sau adiacente, lucrările de fundare trebuie să se desfăşoare începând cu construcţia cu cota cea mai joasă;
+timpul de execuţie al săpăturilor şi părţii subterane a construcţiilor să fie minim, pentru a ţine săpătura cât mai puţin deschisă.
+să fie precizate toate măsurile necesare anticipate de Antreprenor pentru protejarea reţelelor de conducte, cablurilor electrice sau telefonice şi instalaţiilor subterane, cunoscând că eventualele stricăciuni ale acestora vor fi reparate şi plătite de antreprenor.
+În cazul săpăturilor executate sub nivelul freatic, antreprenorul va ţine seama, la întocmirea ofertei, de obligaţia ce-i revine de a asigura epuizarea permanentă a apelor subterane, în care scop este necesar să se asigure utilaje de rezervă care să poată fi operativ puse în funcţiune. Orice deteriorări care se vor produce (ravinări de taluze, înmuierea terenului de fundare atrăgând după sine necesitatea coborârii cotei de fundare, desprinderea hidrizolaţiei, etc.) vor fi remediate şi suportate integral de antreprenor.
+Săpăturile pentru canale sau conducte se vor executa conform profilului longitudinal şi profilelor din proiect, cu următoarele precizări:
+Lungimea tronsoanelor de săpătură pentru conductele de alimentare cu apă va fi cea stabilită prin proiect. La executarea săpăturilor se va ţine seama şi de prevederile Normativului I 22-99.
+Terenul vegetal se va săpa şi depozita separat, urmând a fi folosit pentru acoperiri de taluze şi spaţii verzi.
+1.6.1.6 Executarea umpluturilor
+Umpluturile se vor executa cu pământ rezultat din săpăturile şanturilor.
+Nu se vor permite de către Investitor folosirea pentru umpluturi:
+a pământurilor vegetale;
+b) a pământurilor cu substanţe organice;
+c) a pământurilor cu conţinut de materiale diverse (cărămizi, bolovani, lemn, fiare rezultate în general din demolări).
+Antreprenorul are obligaţia de a asigura prin compactare cu maiul mecanic:
+pentru umpluturi în jurul construcţiilor şi în tranşeele conductelor din afara zonelor carosabile, un grad de compactare de 80% Proctor.
+Pentru umpluturi în tranşeele conductelor în zone carosabile şi umpluturi în corpul drumurilor, un grad de compactare de 95% Proctor.
+Pentru umpluturi de amenajare a platformelor, 90% Proctor.
+Neîndeplinirea gradului de compactare dă dreptul Investitorului ca pe baza verificărilor de laborator, să ceară antreprenorului reexcavarea şi recompactarea umpluturii, lucrări al căror cost se suportă de antreprenor.
+Pentru umplerea tranşeelor conductelor se va proceda după cum urmează:
+într-o primă etapă, tranşeea se va umple parţial până la 20 - 30cm peste partea superioară a tubului, lăsându-se libere zonele de îmbinare între ţevi sau mufe (normativ I 22-99). Această măsură are drept scop evitarea plutirii conductei în caz de ploi abundente.
+pământul care se aşează în jurul tubului nu trebuie să aibă pietre sau bolovani cu dimensiunea mai mare de 5 cm. Bulgării de pământ se vor sparge înaintea aşternerii umpluturii;
+umplutura din prima etapă va fi compactată cu maiul de mană în straturi de maximum 20 cm.
+după efectuarea probei de presiune şi remedierea eventualelor defecţiuni se executa restul umpluturii. Aceasta se va executa în straturi de 30 - 40 cm compactate cu maiul mecanic.
+în cazul conductelor pozate în zone carosabile, umplutura se va executa până la nivelul stratului îmbrăcăminţii rutiere, iar în cazul conductelor pozate în zone necarosabile până la 10 cm de la nivelul terenului, în acest din urmă caz, peste umplutură urmează a se aşterne fie alte straturi prevăzute în proiectul de amenajare a platformei, fie 20 - 30 cm de pământ vegetal.
+Controlul calității lucrărilor
+În funcţie de importanţa construcţiei, volumul acesteia, natura terenului de fundare, sistemul constructiv, proiectantul, prin obligaţiile de proiectare şi asistenţă tehnică va fi chemat pe şantier pentru verificarea şi consemnarea în scris a lucrărilor în faze ascunse, ca: trasarea axelor construcţiei, adâncimea de fundare, natura terenului de fundare.
+Se vor lua probe pentru verificarea compactării umpluturilor, mai ales acolo unde cota terenului amenajat este mai sus decât cota terenului natural.
+Întocmit,
+{proiect.proiectant}
+
+### CAIET_PEHD
+1.6.2.1 Generalități
+Prezentul caiet de sarcini se referă la pregătirelegea execuţiei, execuţia, verificarea şi recepţia lucrărilor de montaj a conductelor de pe reţeaua de alimentare cu apă.
+1.6.2.2 Standarde, normative şi prescripții care guverneaza execuția de ansamblu a lucrării
+I9-2015 - Normativ pentru proiectarea şi executarea instalaţiilor sanitare;lucări
+STAS 6054 - 77 - Teren de fundare. Adâncimea de îngheţ;
+STAS 8591- 97 - Reţele edilitare subterane. Condiţii de amplasare;
+SR EN ISO 4427-2 – Partea 2: Țevi;
+SR EN ISO 4427-3 – Partea 3: Fitinguri;
+SR EN ISO 4427-5 – Partea 5: Aptitudinea pentru utilizare a sistemului.
+În timpul executării săpăturilor şi a lucrărilor de execuţie se vor respecta normele generale şi specifice de protecţia muncii. Se vor avea în vedere următoarele:
+Normele generale de protecţia muncii elaborate în comun de Ministerul Muncii, Solidarităţii Sociale şi Familiei şi Ministerul Sănătăţii;
+Norme specifice de protecţie a muncii pentru construcţii hidroedilitare.
+Protecţia muncii se va asigura şi prin folosirea dispozitivelor de inventar specifice, a semnelor convenţionale şi a indicatoarelor de securitate.
+1.6.2.3 Lucrări premergătoare
+Înainte de începerea execuţiei, beneficiarul împreună cu executantul lucrării vor convoca pe şantier delegaţi de la toate unităţile deţinătoare de gospodării subterane cu ajutorul cărora vor identifica şi marca toate punctele de apropiere sau intersecţie a traseului lucrărilor proiectate cu reţelele subterane existente în zonă. Într-un proces verbal se vor stabili măsurile de siguranţă necesare a fi luate pentru evitarea unor eventuale deranjamente sau accidente.
+Pentru depistarea acelor gospodării subterane a căror poziţie nu se cunoaşte cu exactitate, se vor face sondaje manuale în prezenţa delegatului unităţii ce administrează instalaţia respectivă.
+1.6.2.4 Materiale și echipamente
+Pentru executarea lucrărilor se vor utiliza numai materiale şi echipamente omologate. Fiecare dintre acestea vor fi marcate corespunzător şi vor fi însoţite de certificate de calitate şi de garanţie, după caz.
+Se va respecta în totalitate tehnologia de execuţie a lucrărilor din prezenta documentaţie tehnică şi normele specifice date de furnizor.
+Domenii de aplicare. Caracteristici şi avantaje
+Printre principalele domenii de utilizare a conductelor de PEHD se numără: reţele de distribuţie a apei potabile, reţele de canalizare, instalaţii de tratarea apelor, etc.
+Utilizarea ţevilor de polietilenă de înaltă densitate are o serie de avantaje tehnice şi economice:
+manipulare şi montare uşoară,
+productivitate ridicată şi eficiență la punerea în operă,
+rezistenţă la coroziune,
+rezistenţă la îmbătrânirea accelerată,
+siguranţă în exploatare,
+durată mare de foloşinţă.
+Polietilena este un material plastic, o răşină obţinută prin sinteza chimică de polimerizare a etilenei, derivat al petrolului. Polimerul utilizat pentru tubulatura din polietilenă are o structură moleculară ce garantează păstrarea caracteristicilor mecanice pentru cel puţin 400.000 - 500.000 ore de funcţionare, la presiunea de utilizare şi o temperatură a fluidului de +20°C.
+Prescripții de transport și depozitare
+Ţevile din PEHD trebuie să aibă suprafaţa interioară şi exterioară curată şi lucioasă, să nu aibă defecte, ca de exemplu rizuri, cratere, deformaţii etc. La examinarea cu ochiul liber, ţevile din PEHD trebuie să fie drepte, culoarea lor sa fie uniformă şi de aceeaşi nuanţă, suprafaţa interioară şi exterioară să fie netedă, fără fisuri, arsuri sau cojeli.
+Conductele şi accesoriile PEHD, rezultate din polimerizarea etilenei, sunt furnizate în general în următoarele moduri:
+în colaci de 50 sau 100 m pentru diametre de până la 90 mm, sau sub formă de bare, la solicitarea clienţilor;
+sub forma de bare de 6 - 12 m, pentru diametre mai mari de 90 mm. Extremităţile ţevilor vor fi devaburate şi curate.
+La transportul conductelor, planurile de încărcare trebuie să fie lipsite de asperităţi. Tuburile în colaci trebuie să fie aşezate, de preferinţă, la orizontală. Fixarea încărcăturii se poate face cu funii sau benzi de canepă sau nylon, sau similare; totodată tuburile nu trebuie să fie niciodată în contact direct cu acestea pentru a nu provoca abraziuni sau deformaţii. Toate vehiculele care vor transporta conducte vor trebui sa aibă platformă suficient de mare astfel încăt conductele să nu atârne în afara ei.
+Dacă încărcarea, manipularea şi descărcarea conductelor se execută cu mijloace mecanizate sau cu braţul unui excavator, tuburile trebuie să nu fie legate prea strâns în zona centrală. Dacă aceste operaţii se execută manual, trebuie să se evite tragerea tuburilor pe suprafeţe sau pe obiecte dure sau ascuţite. În ambele cazuri se vor respecta strict recomandările producătorului.
+Depozitarea ţevilor tip bară se face în rastele metalice pentru a le proteja de acţiuni mecanice. Planul pe care se depozitează conductele trebuie să fie nivelat, să nu aibă asperităţi sau pietre ascuţite. Înălţimea depozitului pentru conducte în formă de bare nu trebuie să depăşească 2 m. Pentru tuburile în colaci care se depozitează la orizontală, înălţimea poate să fie mai mare de 2 m. Se vor asigura împotriva căderii de la înălţime. Când tuburile sunt depozitate în spaţii deschise un timp mai îndelungat (1 an), este preferabilă protejarea lor de razele solare, cu o copertină opacă, dar cu posibilitate de aerisire. Depozitarea în aer liber nu va depăşi 2 ani, pentru a nu influenţa calitatea ţevilor sub acţiunea razelor U.V. Locul de depozitare va fi curat şi uscat, fixat la cel puţin 2 m distanţă de orice sursă de căldură.
+Racordurile şi accesoriile sunt în general furnizate în ambalaje. Dacă nu sunt ambalate, se recomandă atenţie sporită la manipulare, transport şi depozitare pentru a nu se provoca deformări ale acestora, efectul fiind nepotrivirea între ele sau cu alte materiale.
+Trasarea lucrărilor
+Trasarea conductelor se materializează pe teren prin ţăruşi amplasaţi pe axul viitoarelor trasee la intervale de cca. 25-50 m şi la toate punctele caracteristice (la cotiri în plan şi în profil, în vârfurile de unghi ale acestora, la tangentele de intrare şi ieşire din curbele realizate prin pozarea tuburilor, în axul căminelor, în punctele de branşament, în punctele de schimbare a diametrului sau tipului de conductă, în punctele cu masive de probă şi de ancoraj) şi marcaţi în conformitate cu notaţiile punctelor de pe planșe.
+Fiecare ţăruş va avea doi martori amplasaţi perpendicular pe ax la distanţa care să-i asigure împotriva degradării în timpul executării săpăturilor, al depozitării pământului şi al circulaţiei pe marginea şantului. De asemenea, se plantează ţăruşi pe porţiunile de aliniament, din 50 în 50 m, pe axul traseului.
+Respectarea întocmai a cotelor de pozare şi a pantelor conductei prevăzute în proiect prezintă o deosebită importanţă pentru a nu se crea, între căminele de golire şi de aerisire puncte înalte sau joase intermediare, ceea ce provoacă formarea unor pungi de aer şi diminuarea debitului conductei, sau impiedică golirea completă a conductei în caz de avarii şi reparaţii.
+Executarea săpăturilor
+Executarea săpăturilor va începe numai după completa organizare a lucrărilor şi aprovizionarea, pe tronsoane dinainte precizate, a tuturor materialelor (conducte, piese speciale etc.) şi a utilajelor necesare pentru executare, astfel încât tranşeele să stea deschise o perioadă cât mai mică de timp. În zonele în care este pământ vegetal, acesta se va depozita separat pentru a putea fi valorificat ca atare.
+Execuţia săpăturilor se va face după o prealabilă nivelare şi pregătire a terenului, astfel încât să se prevină inundarea tranşeelor din ploi, să se asigure o scurgere normală a apelor superficiale care ar putea fi stânjenită de realizarea săpăturilor şi a depozitelor de pământ. În terenuri alunecătoare, săpăturile se deschid pe tronsoane relativ scurte, de max. 15-20 m, executarea urmând să se facă foarte rapid. Săpăturile se vor limita la tronsonul pentru care sunt asigurate toate cele necesare realizării tuturor lucrărilor, inclusiv probele de presiune.
+La executarea săpăturilor, depozitarea pământului se va face la cel putin 0,50 m depărtare de marginea tranşeei, pe o singură parte a tranşeei, aceea opusă căii de acces şi transport a tuburilor şi materialelor pentru conductă. La execuţia săpăturilor se vor folosi sprijiniri corespunzătoare naturii terenului întâlnit. Din aceasta cauză este necesară executarea unor construcţii care să împiedice alunecarea terenului şi surparea malurilor.
+În pământurile coezive sprijinirea se execută orizontal. În pământurile mai puţin coezive, sprijinirea se execută cu dulapi orizontali alăturaţi. Demontarea sprijinirilor orizontale se face de jos în sus, câte un dulap de pe fiecare parte. În terenuri necoezive sau slab acvifere, sprijinirea se face cu dulapi bătuţi vertical peste care se montează dulapi orizontali, între care se montează șpraiţuri orizontale. Demontarea sprijinirilor orizontale se face de jos în sus, câte un dulap de pe fiecare parte, pământul bătându-se în straturi de câte 20 cm. În terenurile cu ape subterane abundente, sprijinirile se fac prin intermediul palplanşelor de lemn sau metalice. Palplanşele trebuie să fie încastrate în pământ minimum 0,50 m. În lungul şanţului se vor monta parapete, iar în locul de traversare a acestuia se vor monta podeţe prefabricate corespunzătoare scopului pentru care s-au prevăzut (pietoni, vehicule).
+Săpăturile se vor executa manual. În zona reţelelor subterane existente se vor executa numai săpături manuale. Săpătura ultimilor 20 cm până la cota inferioară a şanţului se va face cu 2-3 zile înainte de pozare, în execuţie manuală. Lăţimea şanturilor s-a prevăzut a fi de cca. 0,80 - 0,90 m, adâncimea fiind variabilă funcţie de adâncimea de îngheț, care este de -0,9 m, deasupra generatoarei superioare a conductelor, a pantei longitudinale şi în funcţie de reţelele edilitare subterane existente cu care se intersectează şi faţă de care conductele trebuie pozate dedesubt sau deasupra.
+Operaţiunea de săpare a ultimilor 20 cm până la cota inferioară a şanţului se va face numai atunci când au fost aduse langă şanţ tuburile din PEHD şi au fost pregătite toate piesele speciale necesare. În toate cazurile în care lucrările se execută sub nivelul apei, este necesară epuizarea apelor din săpătură pentru a se asigura executarea în uscat a montării tuburilor.
+Pozarea conductelor
+Pozarea conductelor în şanţuri se va efectua în mod obligatoriu pe un strat de nisip de 0,15 m. De asemenea, lateral umplutura de nisip va fi de minim 0,20 m grosime de fiecare parte a conductei, grosime ce rezultă din condiţia lăţimii şanţului de pozare:
+Bmin = Dext + 0,40 m, indicat de producătorul de conducte.
+Conductele nu se vor poza pe cât posibil la temperaturi ambiente sub 0°C. În nici caz nu se vor efectua montaje la temperaturi sub -5°C. Nu se recomandă prelucrarea mecanică a ţevilor la temperaturi sub +5 °C.
+Coborârea conductelor în şanţ se poate executa manual în cazul conductelor uşoare sau cu ajutorul trepiedului şi a macaralei, în cazul conductelor grele. Conductele se coboară în şanţ una câte una pe masură ce se sudează între ele sau se mufează (în funcţie de semifabricatul de pornire). Înainte de coborârea în şanţ a conductelor, se execută pe fundul şanţului un pat de nisip de cca. 15 cm grosime. Montarea conductelor se face dinspre aval către amonte.
+Odată realizată poziţionarea tuburilor în săpătură, deasupra acestora se aşterne un strat de pământ selecționat sau nisip în grosime mai mare de 10 cm, măsurat de la generatoarea superioară a tubului. Acest strat va trebui să înconjoare tubul de fiecare parte. Compactarea stratului până la 2/3 din grosimea tubului trebuie executată cu mare grijă, manual, încercând să se evite deplasarea tuburilor. Pentru compactarea manuală se recomandă utilizarea bătătorului din lemn cu muchii rotunjite, încercând să se evite deplasarea tuburilor. Compactarea va trebui să fie aplicată tubului doar lateral şi niciodată vertical.
+Partea superioară a şanţului se va reumple cu materiale rezultate din săpătura curăţată de elemente cu diametru mai mare de 10 cm şi de fragmente vegetale şi animale, fiecare strat de 15-20 cm fiind compactat separat.Compactarea mecanizată, cu bătătoare mecanice grele, poate fi practicată numai de la înalţimea de 1 m deasupra conductei. Datorită coeficientului de dilatare termică liniară, tuburile de polietilenă pot acumula tensiuni dacă sunt blocate la extremităţi, fapt pentru care umplerea primilor 50 cm deasupra tubului se va executa pentru toată conducta în aceleaşi condiţii de temperatură externă, de preferinţă în perioadele mai puţin calde ale zilei. Se repetă operaţia pentru zone de 20-30 cm, avansându-se într-o singură direcţie, din aval în amonte.
+Lucrările se vor efectua pe trei porţiuni consecutive: reacoperirea până la 50 cm deasupra generatoarei superioare a tubului în prima zonă, reacoperirea până la 15-20 cm în zona adiacentă şi punerea nisipului în jurul tubului (patul de pozare) în zona cea mai avansată. Pentru stabilizarea temperaturii conductei cu cea a terenului, una din extremităţile conductei va trebui menţinută în permanenţă liberă pentru a se putea mișca. În condiţii speciale, operaţia de pozare poate fi îmbunătăţită utilizând materiale geotextile în scopul stabilizării fundaţiei gropii, pereţilor și protecţiei tubului. La terminarea lucrărilor se îndepărtează toate materialele de construcţie rămase precum şi surplusul de pământ, lăsându-se traseul lucrărilor în stare curată.
+Sisteme de îmbinare
+Ţevile de polietilenă se pretează la diferite metode de îmbinare şi prezintă o varietate largă de posibilităţi de alegere a acestora în baza evaluărilor tehnico-economice specifice. Racordurile sunt împărţite în două categorii fundamentale: nedemontabile şi demontabile.
+Pentru îmbinarea conductelor şi montarea accesoriilor la conducte se pot utiliza asamblări demontabile şi rigide.
+Asamblările demontabile pot fi:
+cu flanşe şi contraflanşe;
+mufe şi racorduri de compresiune;
+alte sisteme demontabile.
+Îmbinările rigide se pot realiza astfel:
+sudură cu jet de aer cald;
+sudură cu extruder portabil;
+sudură cap la cap cu termoplacă;
+sudare cu racorduri electrosudabile.
+Piesele speciale de îmbinare vor fi ţinute pe şantier, în magazie, până la folosirea lor în execuţie. Îmbinarea țevilor PEHD cu alte tipuri de material se va face prin îmbinare cu flanşe pentru care ţevile PEHD se vor prevedea cu o piesă specială adaptor cu flanşa la care se ataşează o flanşă liberă din oţel inoxidabil acoperită cu PP montată pe conductă sau prin mufare.
+Amplasarea reţelelor de distribuţie faţă de alte reţele este următoarea:
+conducte apă - cabluri electrice: 0,6 m;
+conducte apă - conducte apă: 0,5 m.
+Proba de presiune
+Conducta trebuie să asigure debitele de calcul la presiunile de serviciu pe toată lungimea ei. La verificarea tranşeei şi a patului de nisip a conductei se va urmări adâncimea tranşeei, aliniamentul, panta părţii inferioare a tranşei şi natura terenului.
+Se admit următoarele abateri limită:
+la pante: ±10% faţă de proiect;
+la cote: ± 5 cm faţă de cotele proiectate.
+Verificarea hidraulică, de rezistenţă şi de etanşeitate se va face înainte de executarea umpluturilor. Nu se admite încercarea pneumatică. Încercarea se face pe porţiuni de conducte pe care au fost montate toate armăturile şi a căror lungime nu trebuie să depăşească 200 m. Proba se va face la o presiune de 1,5 Pn = 1,5 x 6 = 9 bari cu toate armăturile şi anexele montate. Înainte de a se ridica presiunea la valoarea prescrisă se va asigura evacuarea aerului din conductă.
+În cazul în care, după 30 minute de la oprirea presiunii de probă, nu apar scurgeri vizibile, proba se consideră reuşită. Numai în acest caz se poate trece la umplerea şantului, în zona îmbinărilor, cu nisip până la 15 cm peste partea superioară a conductei şi în continuare cu pământ. Închiderile provizorii realizate la cele două capete ale tronsonului supus probei se vor îndepărta numai atunci când se realizează joncţiunea cu tronsonul următor. Pentru ca probele de presiune să dea rezultate corecte, este necesar să se urmărească îndeplinirea următoarelor condiţii:
+la probele de apă să se asigure evacuarea completă a aerului din conductă, odată cu umplerea acesteia cu apă, evacuarea aerului să se facă prin stuţuri cu robinet, amplasate la partea superioară a capacelor de probă, la capătul amonte al tronsonului care se încearcă.
+în timpul încercării să se urmarească cu rigurozitate variaţiile de temperatură ale conductei.
+Spălarea și dezinfectarea conductei
+Se va proceda conform prevederilor SR 4163-3 /1996.
+Spălarea conductelor se va face imediat după efectuarea probei de presiune, cu apă potabilă de la reţea.
+Dezinfectarea se va face imediat după spălarea, prin umplerea cu apă potabilă şi adăugând o soluţie ce conţine clor în cantitate de cca. 25 ÷ 30 mg clor activ / litru volum conductă.
+Soluţia de dezinfectare se menţine timp de 24 ore, timp în care în mai multe puncte (hidranţi, cişmele) se verifică concentraţia prescrisă, după care se va trece la spălarea finală.
+Executarea lucrărilor anexe
+Executarea legăturilor dintre cămine de vizitare are ca regulă generală punerea în funcţiune a reţelei din aval spre amonte. Construcţiile accesorii se vor executa concomitent cu realizarea conductelor de legatură, în ordinea prevăzută în profilele longitudinale.
+Întocmit,
+{proiect.proiectant}
+
+### CAIET_CAMINE
+1.6.3.1 Generalități
+Prezentul caiet de sarcini se referă la pregătirea execuţiei, execuţia, verificarea şi recepţia lucrărilor de montaj a căminelor de pe traseul conductei de apă.
+1.6.3.2 Standarde, normative şi prescripții care guverneaza execuția de ansamblu a lucrării
+La elaborarea caietului de sarcini se au în vedere următoarele principale standarde şi normative:
+SR EN 124-1÷6 – Dispozitive de acoperire și închidere pentru zone de circulație utilizate pentru cămine de vizitare și guri de scurgere. Clasificare, principii de proiectare, încercări, marcare și controlul calității.
+STAS 6002-88 – Alimentări cu apă. Cămine pentru branşamente de apă.
+Prescripţii tehnice
+SR 4163/1-95 – Alimentări cu apă. Reţele de distribuţie. Prescripţii
+fundamentale de proiectare
+STAS 6054 – 77 - Teren de fundare. Adâncimea de îngheţ
+SR EN 12266-1:2012 – Armături industriale. Încercări ale armăturilor metalice. Partea 1: Încercări de presiune, proceduri de încercare și criterii de acceptare
+STAS 10102-75 - Construcţii de beton, beton armat, şi beton precomprimat
+NE 012/1-2022 și NE 012/2-2022 – Cod de practică pentru executarea lucrărilor din beton, beton armat și beton precomprimat
+Legea 10-1995 - Legea privind calitatea în construcţii
+H.G. nr. 343/2017 pentru modificarea Regulamentului de recepție a lucrărilor de construcții și instalații aferente acestora, aprobat prin H.G. 273/1994 Regulament de recepţie a lucrărilor de construcţii şi instalaţii aferente acestora.
+Legea 50-1991 - Legea privind autorizarea executării construcţiilor cu toate modificările şi completările aferente
+În timpul executării săpăturilor şi a lucrărilor de execuţie, se vor respecta normele generale şi specifice de protecţia muncii. Se vor avea în vedere următoarele:
+Legea securităţii şi Sănătăţii în munca nr.319/2006 şi Normele metodologice de aplicare, elaborate de Ministerul Muncii şi Protecţiei Sociale;
+Normele generale de protecţia muncii elaborate în comun de Ministerul Muncii, Familiei, Protecției sociale și Persoanelor şi Ministerul Sănătăţii;
+Norme specifice de protecţie a muncii pentru construcţii hidroedilitare.
+Protecţia muncii se va asigură şi prin folosirea dispozitivelor de inventar specifice, a semnelor convenţional şi a indicatoarelor de securitate.
+1.6.3.3 Domeniu de lucrări
+Pe traseul conductei de apă s-au prevăzut cămine de vane. Căminele prevăzute pe traseul conductelor se compun din trei elemente: fundaţia, camera de lucru şi capacul de acces. Structura de rezistenţă a căminelor se execută din elemente de beton prefabricate. Căminele se vor instala pe întreaga lungime a reţelei de apă.
+1.6.3.4 Date prezentate
+Indiferent de materialul ales pentru construcţie, Contractantul va pregăti desene de construcţie pentru cămine. Calculele vor demonstra capacitatea căminelor de a suporta toate încărcările de trafic şi ale solului. Desenele de construcţie vor include toate detaliile, inclusiv listele cu armături şi detalii ale treptelor.
+1.6.3.5 Materiale și Echipamente. Condiţii generale
+Pe reţeaua de apă s-au prevăzut cămine de vane din beton. Pentru executarea lucrărilor se vor utiliza numai materiale şi echipamente omologate. Fiecare dintre acestea vor fi marcate corespunzător şi vor fi însoţite de certificate de calitate şi garanţie, după caz.
+Domenii de aplicare. Caracteristici şi avantaje
+Căminele din beton sunt prevăzute cu trepte de acces în interior din oțel protejate
+anticoroziv.
+Căminele sunt proiectate pentru instalare subterană.
+Avantaje cămine din beton:
+grad de etanşare ridicat, nu permit infiltrarea sau exfiltrarea apelor vehiculate
+- rezistenţă ridicată la presiunea pământului (presiuni
+laterale) şi la presiunile cauzate de trecerea autovehiculelor de mare tonaj pe deasupra căminelor (presiuni verticale)
+sunt prevăzute cu piese de trecere din PVC
+izolarea se face în interior cu mortar special cu proprietăţi impermeabilizante
+montare: în trotuare, zone cu spațiu verde, alei pietonale, zone carosabile.
+Materiale şi echipamente
+Capacele şi ramele pentru cămine vor fi din material compozit, carosabile pentru zone de circulație cu trafic greu. Capacele vor fi prevăzute cu balama, sistem antifurt, garnitură antizgomot și vor avea orificii de aerisire.
+Căminele din beton vor fi însoțite de un agrement tehnic de la producător pentru a rezulta impermeabilitatea lor.
+Capacele vor fi etanşe şi bine fixate în cadru, pentru a nu vibra la trecerea vehiculelor. Vor avea posibilitatea de blocare, iar pentru deschiderea lor se va folosi o unealtă specifică. Capacele şi ramele vor avea un suport prelucrat, pentru a evita zgomotul sau mişcarea când se circula peste ele.
+"Ansamblurile" capac-ramă trebuie să fie ţinute împreună tot timpul. Toate capacele şi ramele folosite vor fi unse înaintea montării. Ramele şi capacele trebuie să nu prezinte defectele prevăzute în STAS 782-79 ca de exemplu: defecte de suprafaţă şi de structuri, goluri, crăpături, incluziuni etc., care să influenţeze rezistenţa produsului. În toate situaţiile, ramele şi capacele de cămin vor fi construite astfel încât să permită reglarea în funcţie de cota drumului.
+Materiale şi armături pentru beton
+Betonul utilizat pentru cămine va fi de clasa C6/7,5 pentru betonul de egalizare şi C20/25 pentru elementele structural ale căminelor (radier, pereţi, placă peste cămin). Armăturile utilizate vor fi din oţel beton OB 37 şi PC 52. Treptele de acces la interiorul căminelor sunt prevăzute din oţel protejat anticoroziv.
+Conectori pentru racord la cămin
+În pereţii căminului vor fi prevăzuţi şi instalaţi conectori speciali pentru racorduri la cămin, care să asigure un racord etanş între conducte şi cămine. Conectorul va fi de tipul aprobat de Consultant de Supervizare. Conductele racordate la cămin vor fi cu coroana aliniată la suprafaţa peretelui, iar radierul nu va intra în cămin în aceste puncte.
+Piese de trecere
+Prima piesă de conductă racordată la fiecare cămin va fi o piesă mai scurtă, care să permită reducerea momentelor de torsiune rezultate din tasarea căminului sau a conductei racordate. Diametrul acestei piese va fi egal cu 1,5 din diametrul interior al conductei, cu o lungime de aproximativ 0,6 metri.
+Scările căminelor
+Treptele realizate din oţel protejat anticoroziv vor fi înglobate în beton şi se vor monta înainte de turnarea betonului în pereţi. La căminele cu adâncimi mai mari de 5 m se vor prevedea scări de acces cu coş de protecţie şi balustradă.
+Toate construcţiile metalice vor fi protejate anticoroziv.
+Montare cămin beton
+Cotele pentru capacele căminelor vor fi după cum urmează în:
+trotuare, drumuri sau alăturat acestora: marginea superioară a capacelor va fi stabilită la cota finală a drumului sau trotuarului;
+zone deschise, în afara drumurilor şi trotuarelor: marginea superioară a capacelor va fi stabilită la cotele finale ale drumurilor şi trotuarelor sau deasupra cotei naturale a solului.
+Excavare şi reumplere
+Specificaţiile pentru lucrări de pământ pentru structuri de conducte vor fi aceleaşi
+cu cele din cadrul caietului de sarcini pentru terasamente şi nu se mai repetă aici.
+Orificii pentru racordări ulterioare
+Se vor lăsa deschideri (orificii) în cămine pentru a permite racordarea ulterioară la cămine sau pentru racordarea la alte porţiuni de apă care nu sunt incluse în acest Contract. Aceste deschideri vor fi blocate corespunzător pentru a preveni intrarea materiilor străine în cămine.
+1.6.3.6 Testarea căminelor
+Contractantul va asigura apa, forţa de muncă, conductele, coturile şi alte echipamente necesare pentru realizarea testelor, şi nici un cămin sau altă lucrare nu se va acoperi înainte de verificare. Testele care se vor aplica căminelor vor consta din umplerea lor cu apă până la 10 cm sub placa de acoperire sau nivelul solului şi, după alocarea a 24 de ore pentru saturarea betonului, se reumplu până la nivelul iniţial.
+Astfel, pierderea de apă trebuie să fie mai mică decât echivalentul a 2 cm pentru întreaga suprafaţă a căminului, după următoarele 24 de ore. În cazul neîndeplinirii acestei condiţii, se va proceda la repararea căminului şi la repetarea testelor.
+1.6.3.7 Executarea Lucrărilor Anexe
+Executarea legăturilor dintre cămine are ca regulă generală punerea în funcţiune a reţelei din aval spre amonte. Construcţiile accesorii se vor executa concomitent cu realizarea conductelor de legatură, în ordinea prevăzută în profilele longitudinale.
+Întocmit,
+{proiect.proiectant}
+
+### DEVIERI
+La executarea lucrărilor aferente obiectivului, se va acorda o importanță deosebită la intersecția cu alte tipuri de instalații, utilități, etc. În cazul în care, se constată că lucrările ce se execută vor afecta alte instalații, utilități, se vor efectua proceduri de evitare ale unor eventuale probleme, astfel încât lucrările executate să nu afecteze obiectele menționate anterior.
+
+### UTILITATI
+În localitățile pentru care se proiectează sistemul exterior de alimentare cu apă, există surse de apă (din fântâni), energie electrică, gaze naturale, telefonie și internet.
+La executarea lucrărilor este nevoie de asigurarea următoarelor utilități:
+apă  diverse utilizări, cum ar fi: preparare beton, asigurare condițiii igienico-sanitare; etc.;
+energie electrică  alimentarea cu energie electrică a diverselor echipamente sau utilaje necesare realizării lucrărilor respective aferente obiectivului;
+internet și telefonie  asigurarea unor comunicații eficiente.
+
+### TRASARE
+La trasarea lucrărilor se vor consulta părțile desenate și părțile scrise din prezenta documentație tehnică. Trasarea lucrărilor se face în prezența dirigintelui de șantier și se va încheia un proces verbal de trasare.
+
+### ANTEMASURATOARE
+Antemăsurătoarea este prezentată sub forma unor liste de cantități de lucrări împărțite pe articole de deviz, anexate prezentei documentații.
+
+### VERIFICARE
+Verificarea proiectului se va face de către verificatori autorizați, specializați în instalații sanitare, și împreună cu proiectantul vor răspunde pentru corectitudinea proiectului.
+Proiectul se va verifica la toate cerințele de calitate precizate de ‘’Legea nr.10 din 18 ian. 1995’’ privind calitatea în construcții de către un verificator autorizat M.L.P.A.T. pentru specialitatea IS (instalații sanitare).

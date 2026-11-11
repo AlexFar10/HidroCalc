@@ -38,6 +38,8 @@
     "focusHint": "Apasă Tab până ajungi la desen sau dă click pe el, ca să primească focus."
   },
   "exp": {
+    "docMemoriu": "Memoriu tehnic",
+    "docMemoriuDesc": "Document Word cu datele proiectului și textele standard; câmpurile lipsă sunt evidențiate cu galben.",
     "afterSections": "Disponibil după ce definești tronsoanele în Rețea",
     "title": "Export",
     "hint": "Alege ce vrei să exporți: pe rând, cu butonul fiecărui rând, sau mai multe deodată.",

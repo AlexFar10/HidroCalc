@@ -990,6 +990,15 @@ impl HidroApp {
             ExportId::Dxf3d => crate::view3d::View3D::model_bytes(p, ModelFormat::Dxf),
             ExportId::Glb => crate::view3d::View3D::model_bytes(p, ModelFormat::Glb),
             ExportId::Stl => crate::view3d::View3D::model_bytes(p, ModelFormat::Stl),
+            ExportId::DocMemoriu => {
+                use hidro_core::export::{document, docx, MEMORIU_TEMPLATE};
+                let res = self.results.as_ref().ok_or("fără rezultate")?;
+                let today = chrono::Local::now().format("%d.%m.%Y").to_string();
+                let t = &self.t;
+                let tr = |k: &str, args: &[(&str, &str)]| t.tf(k, args);
+                let data = document::build(p, res, &p.network_sections, &today, &tr);
+                docx::render(MEMORIU_TEMPLATE, &data).map(|(bytes, _missing)| bytes)
+            }
             _ => Err("indisponibil".into()),
         }
     }
@@ -1770,7 +1779,7 @@ mod snapshots {
         sample(h.state_mut());
         h.state_mut().project.as_mut().unwrap().current_step = 9;
         h.run_steps(2);
-        let ids = [ExportId::Json, ExportId::Dxf2d, ExportId::Dxf3d, ExportId::Glb, ExportId::Stl, ExportId::Png2d, ExportId::Png3d];
+        let ids = [ExportId::Json, ExportId::Dxf2d, ExportId::Dxf3d, ExportId::Glb, ExportId::Stl, ExportId::DocMemoriu, ExportId::Png2d, ExportId::Png3d];
         h.state_mut().export_job = Some(ExportJob {
             folder: Some(out.clone()),
             queue: ids.into_iter().collect(),
@@ -1790,7 +1799,7 @@ mod snapshots {
         assert_eq!(h.state().project.as_ref().unwrap().current_step, 9, "trebuie să revină la pasul 9");
         let mut names: Vec<String> = std::fs::read_dir(&out).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
         names.sort();
-        assert_eq!(names.len(), 7, "{names:?}");
+        assert_eq!(names.len(), 8, "{names:?}");
         for n in &names {
             let len = std::fs::metadata(out.join(n)).unwrap().len();
             assert!(len > 100, "{n} e prea mic ({len} B)");

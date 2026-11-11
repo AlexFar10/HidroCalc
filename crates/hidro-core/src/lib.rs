@@ -1,3 +1,5 @@
+#![recursion_limit = "512"] // `json!` din export/document.rs are multe chei
+
 //! Logica de domeniu HidroCalc, independentă de interfață.
 //!
 //! - [`model`] — `ProjectData`, compatibil JSON cu aplicația React/Tauri
