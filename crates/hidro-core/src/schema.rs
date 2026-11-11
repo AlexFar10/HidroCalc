@@ -146,27 +146,18 @@ pub fn count_tronsoane(schema: &[SchemaElement]) -> usize {
 /// - tronsoanele care nu (mai) sunt în desen rămân în listă, la sfârșit: le șterge utilizatorul.
 ///
 /// `new_id` generează id-uri pentru tronsoanele noi.
-pub fn build_sections_from_schema(
-    schema: &[SchemaElement],
-    existing: &[NetworkSection],
-    scale_ratio: f64,
-    mut new_id: impl FnMut() -> String,
-) -> Vec<NetworkSection> {
+pub fn build_sections_from_schema(schema: &[SchemaElement], existing: &[NetworkSection], scale_ratio: f64, mut new_id: impl FnMut() -> String) -> Vec<NetworkSection> {
     let tagged = flatten_with_group(schema);
     let tronsoane: Vec<&(&SchemaElement, String)> = tagged.iter().filter(|(e, _)| e.kind == SchemaKind::Tronson).collect();
     if tronsoane.is_empty() {
         return existing.to_vec();
     }
-    let nodes: Vec<&SchemaElement> =
-        tagged.iter().map(|(e, _)| *e).filter(|e| !matches!(e.kind, SchemaKind::Tronson | SchemaKind::Text)).collect();
+    let nodes: Vec<&SchemaElement> = tagged.iter().map(|(e, _)| *e).filter(|e| !matches!(e.kind, SchemaKind::Tronson | SchemaKind::Text)).collect();
 
     let mpp = meters_per_px(scale_ratio);
     let mut matched = std::collections::HashSet::new();
     // Întâi legăturile după id, apoi (pentru restul) după nume.
-    let mut prev_of: Vec<Option<&NetworkSection>> = tronsoane
-        .iter()
-        .map(|(tr, _)| existing.iter().find(|s| s.schema_id.as_deref() == Some(tr.id.as_str()) && matched.insert(s.id.clone())))
-        .collect();
+    let mut prev_of: Vec<Option<&NetworkSection>> = tronsoane.iter().map(|(tr, _)| existing.iter().find(|s| s.schema_id.as_deref() == Some(tr.id.as_str()) && matched.insert(s.id.clone()))).collect();
     for (i, (tr, _)) in tronsoane.iter().enumerate() {
         if prev_of[i].is_none() {
             let name = tr.label.as_deref().unwrap_or("Tr");
@@ -229,9 +220,7 @@ pub fn build_sections_from_schema(
             sections[i].parent_section_id = parent;
         }
         let end = tronson_end(tr);
-        let drawn_hydrant = nodes
-            .iter()
-            .any(|n| n.kind == SchemaKind::Hidrant && connection_points(n).iter().any(|&p| dist(p, end) < CONNECT_TOLERANCE));
+        let drawn_hydrant = nodes.iter().any(|n| n.kind == SchemaKind::Hidrant && connection_points(n).iter().any(|&p| dist(p, end) < CONNECT_TOLERANCE));
         sections[i].has_hydrant |= drawn_hydrant;
     }
 
@@ -239,9 +228,7 @@ pub fn build_sections_from_schema(
     //    alimentează tronsoanele de capăt (fără părinte) din interiorul lui.
     for sub in schema.iter().filter(|e| e.kind == SchemaKind::Subsistem) {
         let ports = connection_points(sub);
-        let feeder = tronsoane
-            .iter()
-            .position(|(tr, group)| group.is_empty() && ports.iter().any(|&p| dist(p, tronson_end(tr)) < CONNECT_TOLERANCE));
+        let feeder = tronsoane.iter().position(|(tr, group)| group.is_empty() && ports.iter().any(|&p| dist(p, tronson_end(tr)) < CONNECT_TOLERANCE));
         let Some(feeder) = feeder else { continue };
         let group = sub.label.clone().unwrap_or_else(|| "Subsistem".into());
         for (i, (_, g)) in tronsoane.iter().enumerate() {

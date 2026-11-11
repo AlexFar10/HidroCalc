@@ -39,13 +39,7 @@ fn axes(ui: &mut Ui, height: f32, y_max: f64, decimals: usize) -> (egui::Respons
         let f = i as f32 / 4.0;
         let y = plot.bottom() - f * plot.height();
         painter.line_segment([Pos2::new(plot.left(), y), Pos2::new(plot.right(), y)], grid);
-        painter.text(
-            Pos2::new(plot.left() - 6.0, y),
-            Align2::RIGHT_CENTER,
-            fmt(y_max * f as f64, decimals),
-            FontId::proportional(10.5),
-            p.muted,
-        );
+        painter.text(Pos2::new(plot.left() - 6.0, y), Align2::RIGHT_CENTER, fmt(y_max * f as f64, decimals), FontId::proportional(10.5), p.muted);
     }
     (resp, painter, Frame { plot, y_max })
 }

@@ -142,15 +142,7 @@ mod tests {
     fn topo_points_fill_eligible_ends_after_debounce() {
         let mut p = ProjectData::default();
         let a = MapAnchor { lat: 45.75, lng: 21.23, world_x: 0.0, world_y: 0.0, tile_zoom: compute_tile_zoom(45.75, 1000.0) };
-        p.network_schema = vec![SchemaElement {
-            kind: SchemaKind::Tronson,
-            x: 0.0,
-            y: 0.0,
-            x2: Some(400.0),
-            y2: Some(0.0),
-            label: Some("Tr1".into()),
-            ..Default::default()
-        }];
+        p.network_schema = vec![SchemaElement { kind: SchemaKind::Tronson, x: 0.0, y: 0.0, x2: Some(400.0), y2: Some(0.0), label: Some("Tr1".into()), ..Default::default() }];
         p.network_sections = vec![NetworkSection::new("s1".into(), "Tr1".into())];
         let end = world_to_latlng(401.0, 2.0, &a, 0.0); // ~0.6 m de capătul aval
         let o = &mut p.network_canvas_settings;

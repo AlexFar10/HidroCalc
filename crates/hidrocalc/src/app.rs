@@ -17,17 +17,7 @@ const SC_SIDEBAR: egui::KeyboardShortcut = egui::KeyboardShortcut::new(egui::Mod
 const SC_PREV: egui::KeyboardShortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::OpenBracket);
 const SC_NEXT: egui::KeyboardShortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::CloseBracket);
 const SC_HELP: egui::KeyboardShortcut = egui::KeyboardShortcut::new(egui::Modifiers::NONE, egui::Key::F1);
-const NUM_KEYS: [egui::Key; 9] = [
-    egui::Key::Num1,
-    egui::Key::Num2,
-    egui::Key::Num3,
-    egui::Key::Num4,
-    egui::Key::Num5,
-    egui::Key::Num6,
-    egui::Key::Num7,
-    egui::Key::Num8,
-    egui::Key::Num9,
-];
+const NUM_KEYS: [egui::Key; 9] = [egui::Key::Num1, egui::Key::Num2, egui::Key::Num3, egui::Key::Num4, egui::Key::Num5, egui::Key::Num6, egui::Key::Num7, egui::Key::Num8, egui::Key::Num9];
 
 /// Textul unei scurtături pentru afișare („Ctrl+]”, „⌘B”, „F1”), cu parantezele drepte scrise ca atare.
 fn shortcut_text(ctx: &egui::Context, sc: &egui::KeyboardShortcut) -> String {
@@ -68,6 +58,8 @@ const BAR_H: f32 = 56.0;
 /// Lățimea barei laterale.
 const SIDEBAR_W: f32 = 270.0;
 const SAVE_DEBOUNCE: Duration = Duration::from_millis(300);
+/// Intervalul minim dintre două comparări ale proiectului cu varianta salvată.
+const DIRTY_CHECK: Duration = Duration::from_millis(150);
 /// Pauza dintre reîncercările automate după o salvare eșuată.
 const SAVE_RETRY: Duration = Duration::from_secs(5);
 
@@ -125,6 +117,8 @@ pub struct HidroApp {
     /// Ultima eroare de salvare și momentul ei: mesajul apare o singură dată, iar
     /// reîncercarea automată se face rar (nu la fiecare cadru).
     save_error: Option<(String, Instant)>,
+    /// Ultima comparare a proiectului cu varianta salvată (se face rar, nu la fiecare cadru).
+    last_dirty_check: Instant,
     pub results: Option<ProjectResults>,
     delete_armed: Option<(String, Instant)>,
     toasts: Vec<Toast>,
@@ -142,9 +136,7 @@ pub fn now_iso() -> String {
 }
 
 fn format_date(iso: &str) -> String {
-    chrono::DateTime::parse_from_rfc3339(iso)
-        .map(|d| d.with_timezone(&chrono::Local).format("%d.%m.%Y, %H:%M").to_string())
-        .unwrap_or_else(|_| iso.to_string())
+    chrono::DateTime::parse_from_rfc3339(iso).map(|d| d.with_timezone(&chrono::Local).format("%d.%m.%Y, %H:%M").to_string()).unwrap_or_else(|_| iso.to_string())
 }
 
 impl HidroApp {
@@ -175,6 +167,7 @@ impl HidroApp {
             saved: None,
             dirty_since: None,
             save_error: None,
+            last_dirty_check: Instant::now(),
             results: None,
             delete_armed: None,
             toasts: Vec::new(),
@@ -269,6 +262,21 @@ impl HidroApp {
         }
     }
 
+    /// Proiectul diferă de varianta salvată. Compararea întregului proiect e costisitoare,
+    /// deci se face cel mult o dată la `DIRTY_CHECK`; odată găsită o modificare, nu se mai
+    /// compară până la salvare (`flush` verifică oricum înainte să scrie).
+    fn is_dirty(&mut self, ctx: &egui::Context) -> bool {
+        if self.dirty_since.is_some() {
+            return true;
+        }
+        if self.last_dirty_check.elapsed() < DIRTY_CHECK {
+            ctx.request_repaint_after(DIRTY_CHECK);
+            return false;
+        }
+        self.last_dirty_check = Instant::now();
+        self.project != self.saved
+    }
+
     #[cfg(test)]
     pub fn close_project_for_test(&mut self) {
         self.close_project();
@@ -284,9 +292,7 @@ impl HidroApp {
 
     fn import_json(&mut self) {
         let Some(path) = rfd::FileDialog::new().add_filter("JSON", &["json"]).pick_file() else { return };
-        let parsed = std::fs::read_to_string(&path)
-            .map_err(|e| e.to_string())
-            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).map_err(|e| e.to_string()));
+        let parsed = std::fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(|s| serde_json::from_str::<serde_json::Value>(&s).map_err(|e| e.to_string()));
         let value = match parsed {
             Ok(v) => v,
             Err(_) => return self.toast(self.t.t("home.invalidJson"), true),
@@ -332,9 +338,8 @@ impl HidroApp {
     /// Picătura (iconița aplicației) ca textură, încărcată o singură dată.
     fn logo_id(&mut self, ctx: &egui::Context) -> egui::TextureId {
         if self.logo.is_none() {
-            let img = image::load_from_memory_with_format(include_bytes!("../../../assets/icons/icon.png"), image::ImageFormat::Png)
-                .map(|i| i.to_rgba8())
-                .unwrap_or_else(|_| image::RgbaImage::new(1, 1));
+            let img =
+                image::load_from_memory_with_format(include_bytes!("../../../assets/icons/icon.png"), image::ImageFormat::Png).map(|i| i.to_rgba8()).unwrap_or_else(|_| image::RgbaImage::new(1, 1));
             let size = [img.width() as usize, img.height() as usize];
             let color = egui::ColorImage::from_rgba_unmultiplied(size, img.as_raw());
             self.logo = Some(ctx.load_texture("logo", color, egui::TextureOptions::LINEAR));
@@ -434,12 +439,9 @@ impl HidroApp {
                     }
                     ui.add_space(6.0);
                     let steps_w = (ui.available_width() - 50.0).max(120.0);
-                    egui::ScrollArea::horizontal()
-                        .id_salt("steps_bar")
-                        .max_width(steps_w)
-                        .auto_shrink([true, true])
-                        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
-                        .show(ui, |ui| {
+                    egui::ScrollArea::horizontal().id_salt("steps_bar").max_width(steps_w).auto_shrink([true, true]).scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden).show(
+                        ui,
+                        |ui| {
                             ui.horizontal(|ui| {
                                 ui.spacing_mut().item_spacing.x = 2.0;
                                 ui.spacing_mut().button_padding = egui::vec2(9.0, 5.0);
@@ -450,7 +452,8 @@ impl HidroApp {
                                     }
                                 }
                             });
-                        });
+                        },
+                    );
                     ui.add_space(6.0);
                     if arrow(ui, "→", format!("{} ({})", self.t.t("nav.stepNext").trim_end_matches(" →"), shortcut_text(ui.ctx(), &SC_NEXT)), step < 9) {
                         go = Some(step + 1);
@@ -544,8 +547,12 @@ impl HidroApp {
             return;
         }
         let p = theme::palette(ctx);
-        ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::NULL.with("focus_ring")))
-            .rect_stroke(r.rect.expand(2.0), CornerRadius::same(8), Stroke::new(2.0, p.accent), egui::StrokeKind::Outside);
+        ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::NULL.with("focus_ring"))).rect_stroke(
+            r.rect.expand(2.0),
+            CornerRadius::same(8),
+            Stroke::new(2.0, p.accent),
+            egui::StrokeKind::Outside,
+        );
     }
 
     /// Fereastra „Ajutor și accesibilitate” (F1 sau butonul „?” din bara laterală).
@@ -596,14 +603,9 @@ impl HidroApp {
             ),
         ];
         let key_cap = |ui: &mut egui::Ui, k: &str| {
-            egui::Frame::new()
-                .fill(p.panel2)
-                .stroke(Stroke::new(1.0, p.border))
-                .corner_radius(CornerRadius::same(5))
-                .inner_margin(Margin::symmetric(6, 2))
-                .show(ui, |ui| {
-                    ui.label(RichText::new(k).monospace().size(12.0).color(p.ink));
-                });
+            egui::Frame::new().fill(p.panel2).stroke(Stroke::new(1.0, p.border)).corner_radius(CornerRadius::same(5)).inner_margin(Margin::symmetric(6, 2)).show(ui, |ui| {
+                ui.label(RichText::new(k).monospace().size(12.0).color(p.ink));
+            });
         };
         let mut open = true;
         let mut s = self.settings.clone();
@@ -807,12 +809,7 @@ impl HidroApp {
         }
         ui.add_space(10.0);
         ui.spacing_mut().button_padding = egui::vec2(10.0, 5.0);
-        let styled = |text: String| {
-            egui::Button::new(RichText::new(text).size(13.0).color(p.ink))
-                .fill(p.panel2)
-                .stroke(Stroke::new(1.0, p.border_strong))
-                .corner_radius(CornerRadius::same(8))
-        };
+        let styled = |text: String| egui::Button::new(RichText::new(text).size(13.0).color(p.ink)).fill(p.panel2).stroke(Stroke::new(1.0, p.border_strong)).corner_radius(CornerRadius::same(8));
         // Acasă + selectarea altui proiect.
         let half = egui::vec2((ui.available_width() - 4.0) / 2.0, 28.0);
         ui.horizontal(|ui| {
@@ -908,14 +905,10 @@ impl HidroApp {
         let sidebar_visible = self.sidebar_visible();
         let bar = self.app_bar(ui, !sidebar_visible);
         if sidebar_visible {
-            let side = egui::Panel::left("sidebar")
-                .exact_size(SIDEBAR_W)
-                .resizable(false)
-                .frame(egui::Frame::new().fill(p.panel).inner_margin(Margin::symmetric(12, 0)))
-                .show(ui, |ui| {
-                    self.sidebar_settings(ui);
-                    egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| self.sidebar(ui));
-                });
+            let side = egui::Panel::left("sidebar").exact_size(SIDEBAR_W).resizable(false).frame(egui::Frame::new().fill(p.panel).inner_margin(Margin::symmetric(12, 0))).show(ui, |ui| {
+                self.sidebar_settings(ui);
+                egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| self.sidebar(ui));
+            });
             let sr = side.response.rect;
             ui.painter().vline(sr.right(), bar.bottom()..=sr.bottom(), Stroke::new(1.0, p.border));
         }
@@ -972,7 +965,9 @@ impl HidroApp {
         let p = self.project.as_ref().ok_or_else(|| self.t.t("exp.unavailable"))?;
         match id {
             ExportId::Json => serde_json::to_vec_pretty(&p.to_export_json(env!("CARGO_PKG_VERSION"), &now_iso())).map_err(|e| e.to_string()),
-            ExportId::Dxf2d => hidro_core::export::dxf::export(&p.network_schema, crate::canvas::scale_ratio(p)).map(String::into_bytes).ok_or_else(|| self.t.t("canvas.exportEmptySchema").to_string()),
+            ExportId::Dxf2d => {
+                hidro_core::export::dxf::export(&p.network_schema, crate::canvas::scale_ratio(p)).map(String::into_bytes).ok_or_else(|| self.t.t("canvas.exportEmptySchema").to_string())
+            }
             ExportId::Dxf3d => crate::view3d::View3D::model_bytes(p, ModelFormat::Dxf),
             ExportId::Glb => crate::view3d::View3D::model_bytes(p, ModelFormat::Glb),
             ExportId::Stl => crate::view3d::View3D::model_bytes(p, ModelFormat::Stl),
@@ -1077,9 +1072,7 @@ impl HidroApp {
     fn finish_export_report(&mut self, job: &ExportJob) {
         match (&job.folder, job.ok.as_slice()) {
             (None, [path]) => self.toast(format!("{} ✓  {}", path.extension().map_or(String::new(), |e| e.to_string_lossy().to_uppercase()), path.display()), false),
-            (Some(dir), ok) if !ok.is_empty() => {
-                self.toast(self.t.tf("exp.done", &[("n", &ok.len().to_string()), ("dir", &dir.display().to_string())]), false)
-            }
+            (Some(dir), ok) if !ok.is_empty() => self.toast(self.t.tf("exp.done", &[("n", &ok.len().to_string()), ("dir", &dir.display().to_string())]), false),
             _ => {}
         }
         if !job.errs.is_empty() {
@@ -1174,7 +1167,7 @@ impl eframe::App for HidroApp {
         let retry_wait = self.save_error.as_ref().is_some_and(|(_, at)| at.elapsed() < SAVE_RETRY);
         if retry_wait {
             ctx.request_repaint_after(SAVE_RETRY);
-        } else if self.db.is_some() && self.project.is_some() && self.project != self.saved {
+        } else if self.db.is_some() && self.project.is_some() && self.is_dirty(&ctx) {
             let since = *self.dirty_since.get_or_insert_with(Instant::now);
             if since.elapsed() >= SAVE_DEBOUNCE {
                 self.flush();

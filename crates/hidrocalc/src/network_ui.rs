@@ -125,7 +125,11 @@ fn regime(t: &I18n, r: &str) -> String {
     } else {
         let k = format!("network.regime.{r}");
         let s = t.t(&k);
-        if s == k { r.into() } else { s.to_string() }
+        if s == k {
+            r.into()
+        } else {
+            s.to_string()
+        }
     }
 }
 
@@ -134,20 +138,9 @@ fn override_cell(ui: &mut Ui, id: egui::Id, ov: &mut Option<f64>, computed: f64,
     let p = pal(ui);
     let edit_id = id.with("e");
     let focused = ui.memory(|m| m.has_focus(edit_id));
-    let mut buf = if focused {
-        ui.data(|d| d.get_temp::<String>(id)).unwrap_or_default()
-    } else {
-        ov.map(|v| format!("{v}")).unwrap_or_default()
-    };
+    let mut buf = if focused { ui.data(|d| d.get_temp::<String>(id)).unwrap_or_default() } else { ov.map(|v| format!("{v}")).unwrap_or_default() };
     let color = if ov.is_some() { p.accent } else { p.muted };
-    let resp = ui.add_sized(
-        [74.0, 24.0],
-        egui::TextEdit::singleline(&mut buf)
-            .id(edit_id)
-            .font(egui::TextStyle::Monospace)
-            .text_color(color)
-            .hint_text(fmt(computed, dec)),
-    );
+    let resp = ui.add_sized([74.0, 24.0], egui::TextEdit::singleline(&mut buf).id(edit_id).font(egui::TextStyle::Monospace).text_color(color).hint_text(fmt(computed, dec)));
     if resp.changed() {
         if buf.trim().is_empty() {
             *ov = None;
@@ -343,9 +336,8 @@ fn inspector(ui: &mut Ui, t: &I18n, p: &mut ProjectData, st: &mut NetworkUi) {
         st.selected = None;
         return;
     };
-    let others: Vec<(String, String)> = std::iter::once((String::new(), t.t("step8.sourceReservoir").to_string()))
-        .chain(p.network_sections.iter().filter(|s| s.id != sel).map(|s| (s.id.clone(), s.name.clone())))
-        .collect();
+    let others: Vec<(String, String)> =
+        std::iter::once((String::new(), t.t("step8.sourceReservoir").to_string())).chain(p.network_sections.iter().filter(|s| s.id != sel).map(|s| (s.id.clone(), s.name.clone()))).collect();
     let s = &mut p.network_sections[idx];
     w::card(ui, |ui| {
         ui.horizontal(|ui| {
@@ -389,10 +381,7 @@ fn inspector(ui: &mut Ui, t: &I18n, p: &mut ProjectData, st: &mut NetworkUi) {
         w::num_field(ui, t.t("native.zeta"), &mut s.zeta, None, None);
         ui.checkbox(&mut s.has_hydrant, t.t("native.hasHydrant"));
         ui.separator();
-        for (label, val, src) in [
-            (t.t("terrain.cotaUp"), &mut s.cota_up, &mut s.cota_up_source),
-            (t.t("terrain.cotaDown"), &mut s.cota_down, &mut s.cota_down_source),
-        ] {
+        for (label, val, src) in [(t.t("terrain.cotaUp"), &mut s.cota_up, &mut s.cota_up_source), (t.t("terrain.cotaDown"), &mut s.cota_down, &mut s.cota_down_source)] {
             ui.horizontal(|ui| {
                 ui.label(RichText::new(label).size(12.0).color(pl.ink2).strong());
                 let badge = match (src.as_deref(), val.is_some()) {
@@ -472,9 +461,27 @@ pub fn step8(ui: &mut Ui, t: &I18n, p: &mut ProjectData, st: &mut NetworkUi) -> 
             w::card(ui, |ui| {
                 w::section_title(ui, t.t("step8.tabConstants"));
                 ui.columns(3, |col| {
-                    w::num_field(&mut col[0], t.t("step8.roughness"), &mut c.roughness, Some("m"), Some(t.tip("Rugozitatea absolută a peretelui conductei (k), folosită în Darcy-Weisbach. Pentru PEHD: ~0.0001 m.")));
-                    w::num_field(&mut col[1], t.t("step8.viscosity"), &mut c.viscosity, Some("m²/s"), Some(t.tip("Vâscozitatea cinematică a apei, folosită la numărul Reynolds. La 10°C: 1.31×10⁻⁶ m²/s.")));
-                    w::num_field(&mut col[2], t.t("step8.economicVelocity"), &mut c.economic_velocity, Some("m/s"), Some(t.tip("Viteza economică folosită pentru predimensionarea diametrului D_calc. Sursă: NP 133 (uzual 0.7–1.5 m/s).")));
+                    w::num_field(
+                        &mut col[0],
+                        t.t("step8.roughness"),
+                        &mut c.roughness,
+                        Some("m"),
+                        Some(t.tip("Rugozitatea absolută a peretelui conductei (k), folosită în Darcy-Weisbach. Pentru PEHD: ~0.0001 m.")),
+                    );
+                    w::num_field(
+                        &mut col[1],
+                        t.t("step8.viscosity"),
+                        &mut c.viscosity,
+                        Some("m²/s"),
+                        Some(t.tip("Vâscozitatea cinematică a apei, folosită la numărul Reynolds. La 10°C: 1.31×10⁻⁶ m²/s.")),
+                    );
+                    w::num_field(
+                        &mut col[2],
+                        t.t("step8.economicVelocity"),
+                        &mut c.economic_velocity,
+                        Some("m/s"),
+                        Some(t.tip("Viteza economică folosită pentru predimensionarea diametrului D_calc. Sursă: NP 133 (uzual 0.7–1.5 m/s).")),
+                    );
                 });
             });
         }
@@ -519,12 +526,8 @@ pub fn step8(ui: &mut Ui, t: &I18n, p: &mut ProjectData, st: &mut NetworkUi) -> 
                                     if n_schema == 0 {
                                         st.notice = Some((t.t("step8.noCanvasSections").to_string(), std::time::Instant::now()));
                                     } else {
-                                        p.network_sections = schema::build_sections_from_schema(
-                                            &p.network_schema,
-                                            &p.network_sections,
-                                            crate::canvas::scale_ratio(p),
-                                            || uuid::Uuid::new_v4().to_string(),
-                                        );
+                                        p.network_sections =
+                                            schema::build_sections_from_schema(&p.network_schema, &p.network_sections, crate::canvas::scale_ratio(p), || uuid::Uuid::new_v4().to_string());
                                     }
                                 }
                             });
@@ -651,8 +654,7 @@ pub fn step9(ui: &mut Ui, t: &I18n, p: &mut ProjectData, r: &ProjectResults, net
         w::card(ui, |ui| {
             ui.label(RichText::new(t.t("step9.chartVelocity")).strong());
             ui.label(RichText::new(t.t("step9.velocityLegend")).size(11.0).color(pl.muted));
-            let pts: Vec<(String, f64, f64)> =
-                secs.iter().filter(|s| s.d_std_int > 0.0).map(|s| (s.name.clone(), s.d_std_int, s.v_real)).collect();
+            let pts: Vec<(String, f64, f64)> = secs.iter().filter(|s| s.d_std_int > 0.0).map(|s| (s.name.clone(), s.d_std_int, s.v_real)).collect();
             charts::velocity_scatter(ui, &pts, 240.0);
         });
         ui.add_space(10.0);

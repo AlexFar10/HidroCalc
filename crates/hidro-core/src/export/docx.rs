@@ -184,7 +184,11 @@ fn build_loops(xml: &str, tags: &[Tag]) -> Result<Vec<Loop>, String> {
                     ((a.0, b.1), (a.0, b.1))
                 } else if let (Some(a), Some(b)) = (p_open, p_close) {
                     let only = |p: (usize, usize), tag: &Tag| para_text(&xml[p.0..p.1]).trim() == xml[tag.start..tag.end].trim();
-                    if only(a, ot) && only(b, ct) { ((a.0, b.1), (a.1, b.0)) } else { ((a.0, b.1), (a.0, b.1)) }
+                    if only(a, ot) && only(b, ct) {
+                        ((a.0, b.1), (a.1, b.0))
+                    } else {
+                        ((a.0, b.1), (a.0, b.1))
+                    }
                 } else {
                     ((ot.start, ct.end), (ot.end, ct.start))
                 };
@@ -274,9 +278,7 @@ impl Ctx<'_> {
                     out.push_str(&self.xml[pos..ts]);
                     if t.kind == ' ' {
                         match lookup(scopes, &t.name) {
-                            Some(v) if !v.is_null() => {
-                                out.push_str(&escape(&format_ro(v)).replace('\n', "</w:t><w:br/><w:t xml:space=\"preserve\">"))
-                            }
+                            Some(v) if !v.is_null() => out.push_str(&escape(&format_ro(v)).replace('\n', "</w:t><w:br/><w:t xml:space=\"preserve\">")),
                             _ => {
                                 self.missing.insert(t.name.clone());
                             }

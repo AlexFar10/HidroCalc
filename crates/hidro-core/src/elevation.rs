@@ -49,10 +49,7 @@ struct Sampler {
 
 impl Sampler {
     fn new(cache_dir: PathBuf) -> Self {
-        let agent = ureq::AgentBuilder::new()
-            .timeout(Duration::from_secs(20))
-            .user_agent(concat!("HidroCalc/", env!("CARGO_PKG_VERSION")))
-            .build();
+        let agent = ureq::AgentBuilder::new().timeout(Duration::from_secs(20)).user_agent(concat!("HidroCalc/", env!("CARGO_PKG_VERSION"))).build();
         Self { cache_dir, tiles: HashMap::new(), agent }
     }
 
@@ -113,16 +110,9 @@ impl Sampler {
 
     fn download(&self, x: u32, y: u32) -> Result<Vec<u8>, String> {
         let url = format!("{TILE_URL}/{ZOOM}/{x}/{y}.png");
-        let resp = self
-            .agent
-            .get(&url)
-            .call()
-            .map_err(|e| format!("Nu s-a putut descărca dala de altitudini ({e}). Verificați conexiunea la internet."))?;
+        let resp = self.agent.get(&url).call().map_err(|e| format!("Nu s-a putut descărca dala de altitudini ({e}). Verificați conexiunea la internet."))?;
         let mut bytes = Vec::new();
-        resp.into_reader()
-            .take(4 * 1024 * 1024)
-            .read_to_end(&mut bytes)
-            .map_err(|e| format!("Eroare la citirea dalei: {e}"))?;
+        resp.into_reader().take(4 * 1024 * 1024).read_to_end(&mut bytes).map_err(|e| format!("Eroare la citirea dalei: {e}"))?;
         Ok(bytes)
     }
 }

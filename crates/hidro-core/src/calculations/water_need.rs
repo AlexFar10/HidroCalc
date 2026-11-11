@@ -34,31 +34,16 @@ pub struct WaterNeedResults {
     pub q_n_or_max: f64,
 }
 
-pub fn calculate_perspective_inhabitants(
-    inhabitants: f64,
-    growth_rate: f64,
-    years: f64,
-) -> f64 {
+pub fn calculate_perspective_inhabitants(inhabitants: f64, growth_rate: f64, years: f64) -> f64 {
     (inhabitants * (1.0 + growth_rate / 100.0).powf(years)).round()
 }
 
-pub fn calculate_water_need(
-    consumers: ConsumersData,
-    constants: WaterNeedConstants,
-) -> WaterNeedResults {
-    let n = if consumers.perspective_inhabitants > 0.0 {
-        consumers.perspective_inhabitants
-    } else {
-        consumers.inhabitants
-    };
+pub fn calculate_water_need(consumers: ConsumersData, constants: WaterNeedConstants) -> WaterNeedResults {
+    let n = if consumers.perspective_inhabitants > 0.0 { consumers.perspective_inhabitants } else { consumers.inhabitants };
     let qg = consumers.q_gosp_per_capita;
 
     let q_n_zi_med_gosp = (n * qg) / 1000.0;
-    let q_n_zi_med_pub: f64 = consumers
-        .public_consumers
-        .iter()
-        .map(|c| (c.quantity * c.num_consumers * c.q_specific) / 1000.0)
-        .sum();
+    let q_n_zi_med_pub: f64 = consumers.public_consumers.iter().map(|c| (c.quantity * c.num_consumers * c.q_specific) / 1000.0).sum();
     let q_n_zi_med = q_n_zi_med_gosp + q_n_zi_med_pub;
     let q_n_zi_max_gosp = q_n_zi_med_gosp * constants.kzi_gosp;
     let q_n_zi_max_pub = q_n_zi_med_pub * constants.kzi_public;
@@ -67,17 +52,7 @@ pub fn calculate_water_need(
     let q_n_or_max_pub = (q_n_zi_max_pub * constants.kor_public_med) / 24.0;
     let q_n_or_max = q_n_or_max_gosp + q_n_or_max_pub;
 
-    WaterNeedResults {
-        q_n_zi_med_gosp,
-        q_n_zi_med_pub,
-        q_n_zi_med,
-        q_n_zi_max_gosp,
-        q_n_zi_max_pub,
-        q_n_zi_max,
-        q_n_or_max_gosp,
-        q_n_or_max_pub,
-        q_n_or_max,
-    }
+    WaterNeedResults { q_n_zi_med_gosp, q_n_zi_med_pub, q_n_zi_med, q_n_zi_max_gosp, q_n_zi_max_pub, q_n_zi_max, q_n_or_max_gosp, q_n_or_max_pub, q_n_or_max }
 }
 
 #[cfg(test)]

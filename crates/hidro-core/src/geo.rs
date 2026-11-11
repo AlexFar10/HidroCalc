@@ -173,11 +173,7 @@ pub fn stereo70_to_wgs84(east: f64, north: f64) -> LatLng {
     let (dx, dy, dz) = (2.329, -147.042, -92.08);
     let (rx, ry, rz) = (0.309 * sec, -0.325 * sec, -0.497 * sec);
     let m = 1.0 + 5.69e-6;
-    let p = [
-        dx + m * (x - rz * y + ry * z),
-        dy + m * (rz * x + y - rx * z),
-        dz + m * (-ry * x + rx * y + z),
-    ];
+    let p = [dx + m * (x - rz * y + ry * z), dy + m * (rz * x + y - rx * z), dz + m * (-ry * x + rx * y + z)];
     let (lat, lon) = ecef_to_geodetic(&WGS84, p);
     LatLng { lat: lat.to_degrees(), lng: lon.to_degrees() }
 }

@@ -26,8 +26,5 @@ pub fn safe_file_name(name: &str, fallback: &str) -> String {
 
 /// Adâncimea de pozare a conductelor (m), din setările canvasului; implicit `DEFAULT_PIPE_DEPTH`.
 pub fn pipe_depth(p: &crate::model::ProjectData) -> f64 {
-    p.network_canvas_settings
-        .get("pipeDepth")
-        .and_then(serde_json::Value::as_f64)
-        .unwrap_or(crate::defaults::DEFAULT_PIPE_DEPTH)
+    p.network_canvas_settings.get("pipeDepth").and_then(serde_json::Value::as_f64).unwrap_or(crate::defaults::DEFAULT_PIPE_DEPTH)
 }

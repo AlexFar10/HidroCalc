@@ -6,8 +6,8 @@ use super::quantities;
 use super::{pipe_depth, round, Tr};
 use crate::calculations::network::NetworkSection;
 use crate::model::ProjectData;
-use crate::pipeline::ProjectResults;
 use crate::model::SchemaKind;
+use crate::pipeline::ProjectResults;
 use crate::schema::flatten_with_group;
 use serde_json::{json, Value};
 
@@ -26,22 +26,18 @@ fn ro(v: Option<f64>, d: i32) -> Value {
 
 /// `today` = data generării, formatată de apelant (ex. „05.11.2026”).
 pub fn build(p: &ProjectData, res: &ProjectResults, secs: &[NetworkSection], today: &str, t: Tr) -> Value {
-    let (g, c, k, co, h, rz, nc) = (
-        &p.general,
-        &p.consumers,
-        &p.water_need_constants,
-        &p.water_demand_coefficients,
-        &p.hydrants,
-        &p.reservoir,
-        &p.network_constants,
-    );
+    let (g, c, k, co, h, rz, nc) = (&p.general, &p.consumers, &p.water_need_constants, &p.water_demand_coefficients, &p.hydrants, &p.reservoir, &p.network_constants);
     let (need, demand, hr, flows, rr) = (&res.water_need, &res.water_demand, &res.hydrants, &res.design_flows, &res.reservoir);
     let qty = quantities::build(p, secs, Some(rr), t);
     let is_cyl = rz.forma.to_lowercase().starts_with("cilindr");
     let regime = |r: &str| {
         let k = format!("network.regime.{r}");
         let s = t(&k, &[]);
-        if s == k { r.to_string() } else { s }
+        if s == k {
+            r.to_string()
+        } else {
+            s
+        }
     };
     let tronsoane: Vec<Value> = secs
         .iter()
@@ -260,4 +256,3 @@ mod template_tests {
         assert!(doc.contains("[de completat:"), "locurile de completat trebuie să rămână");
     }
 }
-

@@ -73,9 +73,11 @@ fn render_main_screens() {
     std::fs::create_dir_all(&dir).unwrap();
     for dark in [false, true] {
         let db_path = dir.join(format!("s{dark}.db"));
-        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1360.0, 880.0)).with_theme(if dark { egui::Theme::Dark } else { egui::Theme::Light }).wgpu().build_eframe(|cc| {
-            HidroApp::with_db(cc, Settings { lang: Lang::Ro, dark, ..Default::default() }, Db::open(&db_path))
-        });
+        let mut h = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1360.0, 880.0))
+            .with_theme(if dark { egui::Theme::Dark } else { egui::Theme::Light })
+            .wgpu()
+            .build_eframe(|cc| HidroApp::with_db(cc, Settings { lang: Lang::Ro, dark, ..Default::default() }, Db::open(&db_path)));
         let suffix = if dark { "dark" } else { "light" };
         h.run_steps(3);
         h.render().unwrap().save(out.join(format!("home-empty-{suffix}.png"))).unwrap();
@@ -116,9 +118,7 @@ fn json_export_roundtrip_keeps_schema() {
     let dir = std::env::temp_dir().join(format!("hidrocalc-json-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
     let db_path = dir.join("j.db");
-    let mut h = egui_kittest::Harness::builder()
-        .with_size(egui::vec2(1360.0, 880.0))
-        .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1360.0, 880.0)).build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
     sample(h.state_mut());
     let p = h.state().project.clone().unwrap();
     assert!(!p.network_schema.is_empty(), "proiectul de test trebuie să aibă schemă");
@@ -136,9 +136,7 @@ fn model_3d_exports_for_sample_project() {
     let dir = std::env::temp_dir().join(format!("hidrocalc-3d-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
     let db_path = dir.join("m.db");
-    let mut h = egui_kittest::Harness::builder()
-        .with_size(egui::vec2(1360.0, 880.0))
-        .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1360.0, 880.0)).build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
     sample(h.state_mut());
     h.state_mut().project.as_mut().unwrap().current_step = 8;
     h.run_steps(2);
@@ -223,11 +221,8 @@ fn step9_empty_and_collapsed_sidebar_snapshots() {
     let dir = std::env::temp_dir().join(format!("hidrocalc-e9-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
     let db_path = dir.join("e.db");
-    let mut h = egui_kittest::Harness::builder()
-        .with_size(egui::vec2(1360.0, 1500.0))
-        .with_theme(egui::Theme::Light)
-        .wgpu()
-        .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
+    let mut h =
+        egui_kittest::Harness::builder().with_size(egui::vec2(1360.0, 1500.0)).with_theme(egui::Theme::Light).wgpu().build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
     h.state_mut().create_project();
     h.state_mut().project.as_mut().unwrap().current_step = 9;
     h.run_steps(3);
@@ -245,9 +240,7 @@ fn keyboard_navigation_works() {
     let dir = std::env::temp_dir().join(format!("hidrocalc-kb-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
     let db_path = dir.join("k.db");
-    let mut h = egui_kittest::Harness::builder()
-        .with_size(egui::vec2(1360.0, 900.0))
-        .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1360.0, 900.0)).build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
     sample(h.state_mut());
     h.state_mut().project.as_mut().unwrap().current_step = 3;
     h.run_steps(2);
@@ -305,9 +298,7 @@ fn toasts_persist_and_high_contrast_applies() {
     let dir = std::env::temp_dir().join(format!("hidrocalc-ac-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
     let db_path = dir.join("a.db");
-    let mut h = egui_kittest::Harness::builder()
-        .with_size(egui::vec2(1360.0, 900.0))
-        .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1360.0, 900.0)).build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
     sample(h.state_mut());
     h.state_mut().toast("eroare de test", true);
     h.state_mut().toast("salvat", false);
@@ -391,11 +382,8 @@ fn layout_adapts_to_width_and_sidebar() {
         let dir = std::env::temp_dir().join(format!("hidrocalc-rw-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         let db_path = dir.join("r.db");
-        let mut h = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(w, 800.0))
-            .with_theme(egui::Theme::Light)
-            .wgpu()
-            .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
+        let mut h =
+            egui_kittest::Harness::builder().with_size(egui::vec2(w, 800.0)).with_theme(egui::Theme::Light).wgpu().build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
         sample(h.state_mut());
         h.state_mut().project.as_mut().unwrap().current_step = 3;
         h.run_steps(3);
@@ -446,9 +434,7 @@ fn language_switch_toggles_between_ro_and_en() {
     let dir = std::env::temp_dir().join(format!("hidrocalc-ls-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
     let db_path = dir.join("l.db");
-    let mut h = egui_kittest::Harness::builder()
-        .with_size(egui::vec2(1360.0, 900.0))
-        .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1360.0, 900.0)).build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
     sample(h.state_mut());
     h.run_steps(2);
     assert_eq!(h.state().settings.lang, Lang::Ro);
@@ -468,9 +454,7 @@ fn canvas_keyboard_draw_select_and_move() {
     let dir = std::env::temp_dir().join(format!("hidrocalc-kc-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
     let db_path = dir.join("c.db");
-    let mut h = egui_kittest::Harness::builder()
-        .with_size(egui::vec2(1360.0, 900.0))
-        .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1360.0, 900.0)).build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
     sample(h.state_mut());
     h.state_mut().project.as_mut().unwrap().current_step = 8;
     h.run_steps(3);
@@ -517,11 +501,8 @@ fn focus_ring_snapshot() {
     let dir = std::env::temp_dir().join(format!("hidrocalc-fr-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
     let db_path = dir.join("f.db");
-    let mut h = egui_kittest::Harness::builder()
-        .with_size(egui::vec2(1360.0, 900.0))
-        .with_theme(egui::Theme::Light)
-        .wgpu()
-        .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
+    let mut h =
+        egui_kittest::Harness::builder().with_size(egui::vec2(1360.0, 900.0)).with_theme(egui::Theme::Light).wgpu().build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
     sample(h.state_mut());
     h.state_mut().project.as_mut().unwrap().current_step = 8;
     h.run_steps(3);
@@ -543,11 +524,8 @@ fn theme_toggle_snapshot() {
     let dir = std::env::temp_dir().join(format!("hidrocalc-tt-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
     let db_path = dir.join("t.db");
-    let mut h = egui_kittest::Harness::builder()
-        .with_size(egui::vec2(1360.0, 900.0))
-        .with_theme(egui::Theme::Light)
-        .wgpu()
-        .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
+    let mut h =
+        egui_kittest::Harness::builder().with_size(egui::vec2(1360.0, 900.0)).with_theme(egui::Theme::Light).wgpu().build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
     sample(h.state_mut());
     h.state_mut().project.as_mut().unwrap().current_step = 3;
     h.run_steps(3);
@@ -567,22 +545,12 @@ fn export_job_writes_all_files_and_returns_to_step_9() {
     let out = dir.join("out");
     std::fs::create_dir_all(&out).unwrap();
     let db_path = dir.join("e.db");
-    let mut h = egui_kittest::Harness::builder()
-        .with_size(egui::vec2(1360.0, 880.0))
-        .wgpu()
-        .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1360.0, 880.0)).wgpu().build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
     sample(h.state_mut());
     h.state_mut().project.as_mut().unwrap().current_step = 9;
     h.run_steps(2);
     let ids = [ExportId::Json, ExportId::Dxf2d, ExportId::Dxf3d, ExportId::Glb, ExportId::Stl, ExportId::DocMemoriu, ExportId::Png2d, ExportId::Png3d];
-    h.state_mut().export_job = Some(ExportJob {
-        folder: Some(out.clone()),
-        queue: ids.into_iter().collect(),
-        ok: Vec::new(),
-        errs: Vec::new(),
-        cap: None,
-        restore: (9, false),
-    });
+    h.state_mut().export_job = Some(ExportJob { folder: Some(out.clone()), queue: ids.into_iter().collect(), ok: Vec::new(), errs: Vec::new(), cap: None, restore: (9, false) });
     for _ in 0..400 {
         h.run_steps(1);
         std::thread::sleep(std::time::Duration::from_millis(15));
@@ -618,22 +586,13 @@ fn map_snapshot() {
     let dir = std::env::temp_dir().join(format!("hidrocalc-map-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
     let db_path = dir.join("m.db");
-    let mut h = egui_kittest::Harness::builder()
-        .with_size(egui::vec2(1360.0, 880.0))
-        .with_theme(egui::Theme::Light)
-        .wgpu()
-        .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
+    let mut h =
+        egui_kittest::Harness::builder().with_size(egui::vec2(1360.0, 880.0)).with_theme(egui::Theme::Light).wgpu().build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
     sample(h.state_mut());
     {
         let p = h.state_mut().project.as_mut().unwrap();
         // Ancoră în Timișoara (Piața Victoriei), la capătul amonte al lui Tr1.
-        let a = hidro_core::geo::MapAnchor {
-            lat: 45.7537,
-            lng: 21.2257,
-            world_x: 0.0,
-            world_y: 0.0,
-            tile_zoom: hidro_core::geo::compute_tile_zoom(45.7537, 1000.0),
-        };
+        let a = hidro_core::geo::MapAnchor { lat: 45.7537, lng: 21.2257, world_x: 0.0, world_y: 0.0, tile_zoom: hidro_core::geo::compute_tile_zoom(45.7537, 1000.0) };
         let o = &mut p.network_canvas_settings;
         o.map_anchor = Some(a);
         o.set("autoTerrainCota", serde_json::json!(false));
@@ -662,9 +621,7 @@ fn map_snapshot() {
 #[test]
 fn missing_database_warns_and_save_errors_do_not_pile_up() {
     use egui_kittest::kittest::Queryable;
-    let mut h = egui_kittest::Harness::builder()
-        .with_size(egui::vec2(1360.0, 900.0))
-        .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Err("disc indisponibil".into())));
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1360.0, 900.0)).build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Err("disc indisponibil".into())));
     h.state_mut().create_project();
     h.state_mut().project.as_mut().unwrap().general.name = "Fără bază".into();
     h.run_steps(4);
@@ -675,9 +632,7 @@ fn missing_database_warns_and_save_errors_do_not_pile_up() {
     let dir = std::env::temp_dir().join(format!("hidrocalc-ro-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
     let db_path = dir.join("r.db");
-    let mut h = egui_kittest::Harness::builder()
-        .with_size(egui::vec2(1360.0, 900.0))
-        .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1360.0, 900.0)).build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
     h.state_mut().create_project();
     h.state_mut().db.as_ref().unwrap().break_for_test();
     h.state_mut().project.as_mut().unwrap().general.name = "Modificat".into();

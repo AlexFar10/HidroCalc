@@ -96,8 +96,13 @@ pub fn draw_tiles(painter: &egui::Painter, rect: Rect, view: View, a: &MapAnchor
         let (dx, dy) = (wx - a.world_x, wy - a.world_y);
         (a.world_x + dx * c + dy * s, a.world_y - dx * s + dy * c)
     };
-    let corners: Vec<(f64, f64)> =
-        [rect.left_top(), rect.right_top(), rect.left_bottom(), rect.right_bottom()].iter().map(|p| { let (x, y) = view.to_world(*p); unrotate(x, y) }).collect();
+    let corners: Vec<(f64, f64)> = [rect.left_top(), rect.right_top(), rect.left_bottom(), rect.right_bottom()]
+        .iter()
+        .map(|p| {
+            let (x, y) = view.to_world(*p);
+            unrotate(x, y)
+        })
+        .collect();
     let (wl, wr) = corners.iter().fold((f64::MAX, f64::MIN), |(l, r), p| (l.min(p.0), r.max(p.0)));
     let (wt, wb) = corners.iter().fold((f64::MAX, f64::MIN), |(t, b), p| (t.min(p.1), b.max(p.1)));
     let to_tile = |w: f64, anchor_w: f64, anchor_osm: f64| ((anchor_osm + (w - anchor_w) * osm_per_world) / TILE_SIZE).floor() as i64;
@@ -430,12 +435,7 @@ impl MapWindow {
         ui.add(egui::Label::new(RichText::new(t.t("topo.formats")).size(11.0).color(pl.muted)).wrap());
         ui.label(RichText::new(t.tf("native.topoCount", &[("n", &n_pts.to_string())])).size(12.0).color(pl.muted));
         ui.add_space(6.0);
-        let crs_opts = [
-            (Crs::Auto, "topo.crsAuto"),
-            (Crs::Stereo70, "topo.crsStereo70"),
-            (Crs::Stereo70En, "topo.crsStereo70en"),
-            (Crs::Wgs84, "topo.crsWgs84"),
-        ];
+        let crs_opts = [(Crs::Auto, "topo.crsAuto"), (Crs::Stereo70, "topo.crsStereo70"), (Crs::Stereo70En, "topo.crsStereo70en"), (Crs::Wgs84, "topo.crsWgs84")];
         let cur = self.crs.unwrap_or(Crs::Auto);
         let options: Vec<(String, String)> = crs_opts.iter().map(|(c, k)| (format!("{}", *c as u8), t.t(k).to_string())).collect();
         let mut sel = format!("{}", cur as u8);
@@ -499,14 +499,7 @@ impl MapWindow {
             pts.push(TopoPoint { id: uuid::Uuid::new_v4().to_string(), lat: ll.lat, lng: ll.lng, z: *z, name: name.clone() });
         }
         p.network_canvas_settings.topo_points = pts;
-        self.notice = Some(t.tf(
-            "native.topoImported",
-            &[
-                ("n", &(res.points.len() - duplicates).to_string()),
-                ("noz", &res.skipped_no_z.to_string()),
-                ("bad", &res.skipped_invalid.to_string()),
-            ],
-        ));
+        self.notice = Some(t.tf("native.topoImported", &[("n", &(res.points.len() - duplicates).to_string()), ("noz", &res.skipped_no_z.to_string()), ("bad", &res.skipped_invalid.to_string())]));
     }
 }
 

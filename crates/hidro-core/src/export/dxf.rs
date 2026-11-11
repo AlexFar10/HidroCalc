@@ -24,15 +24,7 @@ fn dxf_text(s: &str) -> String {
     out
 }
 
-const LAYERS: &[(&str, i32)] = &[
-    ("TRONSOANE", 5),
-    ("REZERVOARE", 3),
-    ("SURSE", 3),
-    ("HIDRANTI", 1),
-    ("CAMINE", 4),
-    ("TEXTE", 7),
-    ("SUBSISTEME", 2),
-];
+const LAYERS: &[(&str, i32)] = &[("TRONSOANE", 5), ("REZERVOARE", 3), ("SURSE", 3), ("HIDRANTI", 1), ("CAMINE", 4), ("TEXTE", 7), ("SUBSISTEME", 2)];
 
 struct Dxf(String);
 
@@ -186,15 +178,7 @@ mod tests {
 
     #[test]
     fn line_in_metres_with_flipped_y() {
-        let s = vec![SchemaElement {
-            kind: SchemaKind::Tronson,
-            x: 0.0,
-            y: 100.0,
-            x2: Some(1000.0),
-            y2: Some(100.0),
-            label: Some("Tr 1".into()),
-            ..Default::default()
-        }];
+        let s = vec![SchemaElement { kind: SchemaKind::Tronson, x: 0.0, y: 100.0, x2: Some(1000.0), y2: Some(100.0), label: Some("Tr 1".into()), ..Default::default() }];
         let d = export(&s, 1000.0).unwrap();
         assert!(d.starts_with("  0\nSECTION\n"));
         assert!(d.contains(" 11\n264.580000\n")); // 1000 px × 0.26458 m

@@ -27,15 +27,7 @@ pub fn compute(p: &ProjectData) -> ProjectResults {
             inhabitants: c.inhabitants,
             perspective_inhabitants: c.perspective_inhabitants,
             q_gosp_per_capita: c.q_gosp_per_capita,
-            public_consumers: c
-                .public_consumers
-                .iter()
-                .map(|pc| water_need::PublicConsumer {
-                    quantity: pc.quantity,
-                    num_consumers: pc.num_consumers,
-                    q_specific: pc.q_specific,
-                })
-                .collect(),
+            public_consumers: c.public_consumers.iter().map(|pc| water_need::PublicConsumer { quantity: pc.quantity, num_consumers: pc.num_consumers, q_specific: pc.q_specific }).collect(),
         },
         water_need::WaterNeedConstants {
             kor_gosp: p.water_need_constants.kor_gosp,
@@ -68,17 +60,7 @@ pub fn compute(p: &ProjectData) -> ProjectResults {
 
     let r = &p.reservoir;
     let rz = reservoir::calculate_reservoir(
-        reservoir::ReservoirData {
-            cota_teren: r.cota_teren,
-            hb: r.hb,
-            i_med: r.i_med,
-            l: r.l,
-            c: r.c,
-            coef_debit_min: r.coef_debit_min,
-            t_av: r.t_av,
-            ti: r.ti,
-            qa: r.qa,
-        },
+        reservoir::ReservoirData { cota_teren: r.cota_teren, hb: r.hb, i_med: r.i_med, l: r.l, c: r.c, coef_debit_min: r.coef_debit_min, t_av: r.t_av, ti: r.ti, qa: r.qa },
         reservoir::DemandForReservoir { q_s_zi_max: wd.q_s_zi_max },
         reservoir::HydrantForReservoir { v_ri: hy.v_ri },
     );
@@ -140,13 +122,7 @@ pub fn nodal_pressures(p: &ProjectData, cota_radier: f64) -> Vec<pressure::NodeP
     pressure::calculate_nodal_pressures(
         p.network_sections
             .iter()
-            .map(|s| pressure::SectionInput {
-                id: s.id.clone(),
-                name: s.name.clone(),
-                parent_section_id: s.parent_section_id.clone(),
-                cota_down: s.cota_down,
-                h_tot: s.h_tot,
-            })
+            .map(|s| pressure::SectionInput { id: s.id.clone(), name: s.name.clone(), parent_section_id: s.parent_section_id.clone(), cota_down: s.cota_down, h_tot: s.h_tot })
             .collect(),
         cota_radier,
         p.reservoir.hb,

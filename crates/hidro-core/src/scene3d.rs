@@ -214,27 +214,59 @@ fn interpolated_grid(known: &[(f64, f64, f64)], extra: &[(f64, f64)]) -> Option<
     Some(TerrainGrid { min_x: x0, min_y: y0, max_x: x1, max_y: y1, nx: n, ny: n, heights, key: "interpolat".into() })
 }
 
+/// Sol aproximativ pentru scenele fără grilă DEM: interpolat din cotele capetelor de tronson.
+fn ground_from_sections(inp: &Input) -> Option<TerrainGrid> {
+    let mut known = Vec::new();
+    let mut extra = Vec::new();
+    for tr in inp.schema.iter().filter(|e| e.kind == SchemaKind::Tronson) {
+        let sec = section_for(tr, inp.sections);
+        let end = (tr.x2.unwrap_or(tr.x), tr.y2.unwrap_or(tr.y));
+        for (p, c) in [((tr.x, tr.y), sec.and_then(|s| s.cota_up)), (end, sec.and_then(|s| s.cota_down))] {
+            match c {
+                Some(z) => known.push((p.0, p.1, z)),
+                None => extra.push(p),
+            }
+        }
+    }
+    extra.extend(inp.schema.iter().filter(|e| !matches!(e.kind, SchemaKind::Tronson | SchemaKind::Text)).map(|e| (e.x, e.y)));
+    interpolated_grid(&known, &extra)
+}
+
+/// Cotele nodurilor grilei (cu nodurile lipsă completate și corecția din punctele topo),
+/// împreună cu minimul și maximul lor.
+fn grid_heights(g: &TerrainGrid, fallback: f64, correction: &dyn Fn(f64, f64) -> f64) -> (Vec<f64>, f64, f64) {
+    let mut hs = vec![0.0; g.nx * g.ny];
+    let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
+    for j in 0..g.ny {
+        let y = g.min_y + (g.max_y - g.min_y) * j as f64 / (g.ny - 1) as f64;
+        for i in 0..g.nx {
+            let x = g.min_x + (g.max_x - g.min_x) * i as f64 / (g.nx - 1) as f64;
+            let h = g.heights.get(j * g.nx + i).copied().flatten().unwrap_or(fallback) + correction(x, y);
+            hs[j * g.nx + i] = h;
+            lo = lo.min(h);
+            hi = hi.max(h);
+        }
+    }
+    (hs, lo, hi)
+}
+
+/// Suprafața terenului: pozițiile 3D ale nodurilor grilei.
+fn terrain_mesh(g: &TerrainGrid, heights: Vec<f64>, min_h: f64, max_h: f64, to_vec: &dyn Fn(f64, f64, f64) -> Vec3) -> Terrain {
+    let mut positions = Vec::with_capacity(g.nx * g.ny);
+    for j in 0..g.ny {
+        let y = g.min_y + (g.max_y - g.min_y) * j as f64 / (g.ny - 1) as f64;
+        for i in 0..g.nx {
+            let x = g.min_x + (g.max_x - g.min_x) * i as f64 / (g.nx - 1) as f64;
+            positions.push(to_vec(x, y, heights[j * g.nx + i]));
+        }
+    }
+    Terrain { nx: g.nx, ny: g.ny, positions, heights, min_h, max_h }
+}
+
 pub fn build(inp: &Input) -> Scene {
     let m = meters_per_px(inp.scale_ratio);
     let dem = inp.terrain.filter(|g| g.is_valid() && g.heights.iter().any(Option::is_some));
-    let synth = if dem.is_none() && inp.interpolate_ground {
-        let mut known = Vec::new();
-        let mut extra = Vec::new();
-        for tr in inp.schema.iter().filter(|e| e.kind == SchemaKind::Tronson) {
-            let sec = section_for(tr, inp.sections);
-            let end = (tr.x2.unwrap_or(tr.x), tr.y2.unwrap_or(tr.y));
-            for (p, c) in [((tr.x, tr.y), sec.and_then(|s| s.cota_up)), (end, sec.and_then(|s| s.cota_down))] {
-                match c {
-                    Some(z) => known.push((p.0, p.1, z)),
-                    None => extra.push(p),
-                }
-            }
-        }
-        extra.extend(inp.schema.iter().filter(|e| !matches!(e.kind, SchemaKind::Tronson | SchemaKind::Text)).map(|e| (e.x, e.y)));
-        interpolated_grid(&known, &extra)
-    } else {
-        None
-    };
+    let synth = if dem.is_none() && inp.interpolate_ground { ground_from_sections(inp) } else { None };
     let grid = dem.or(synth.as_ref());
     let residuals: Vec<(f64, f64, f64)> = match grid {
         Some(g) => inp.topo.iter().filter_map(|&(x, y, z)| sample_grid(g, x, y).map(|h| (x, y, z - h))).collect(),
@@ -305,22 +337,13 @@ pub fn build(inp: &Input) -> Scene {
     let (cx, cz) = ((min_x + max_x) / 2.0 * m, (min_y + max_y) / 2.0 * m);
     let span = ((max_x - min_x) * m).hypot((max_y - min_y) * m).max(10.0);
 
-    let mut terrain_h: Option<Vec<f64>> = None;
-    let (mut t_min, mut t_max) = (f64::INFINITY, f64::NEG_INFINITY);
-    if let Some(g) = grid {
-        let mut hs = vec![0.0; g.nx * g.ny];
-        for j in 0..g.ny {
-            let y = g.min_y + (g.max_y - g.min_y) * j as f64 / (g.ny - 1) as f64;
-            for i in 0..g.nx {
-                let x = g.min_x + (g.max_x - g.min_x) * i as f64 / (g.nx - 1) as f64;
-                let h = g.heights.get(j * g.nx + i).copied().flatten().unwrap_or(fallback) + correction(x, y);
-                hs[j * g.nx + i] = h;
-                t_min = t_min.min(h);
-                t_max = t_max.max(h);
-            }
+    let (terrain_h, t_min, t_max) = match grid {
+        Some(g) => {
+            let (hs, lo, hi) = grid_heights(g, fallback, &correction);
+            (Some(hs), lo, hi)
         }
-        terrain_h = Some(hs);
-    }
+        None => (None, f64::INFINITY, f64::NEG_INFINITY),
+    };
     let mut all: Vec<f64> = known.iter().map(|e| e.2).collect();
     all.push(res_ground.unwrap_or(fallback));
     if terrain_h.is_some() {
@@ -357,17 +380,7 @@ pub fn build(inp: &Input) -> Scene {
         })
         .collect();
     let terrain = match (grid, terrain_h) {
-        (Some(g), Some(hs)) => {
-            let mut positions = Vec::with_capacity(g.nx * g.ny);
-            for j in 0..g.ny {
-                let y = g.min_y + (g.max_y - g.min_y) * j as f64 / (g.ny - 1) as f64;
-                for i in 0..g.nx {
-                    let x = g.min_x + (g.max_x - g.min_x) * i as f64 / (g.nx - 1) as f64;
-                    positions.push(to_vec(x, y, hs[j * g.nx + i]));
-                }
-            }
-            Some(Terrain { nx: g.nx, ny: g.ny, positions, heights: hs, min_h: t_min, max_h: t_max })
-        }
+        (Some(g), Some(hs)) => Some(terrain_mesh(g, hs, t_min, t_max, &to_vec)),
         _ => None,
     };
     let topo: Vec<Vec3> = inp.topo.iter().map(|&(x, y, z)| to_vec(x, y, z)).collect();
@@ -415,12 +428,9 @@ mod tests {
         assert_eq!(sample_grid(&g, 5.0, 5.0), Some(10.0));
         assert_eq!(sample_grid(&g, 11.0, 5.0), None);
         // Grile malformate (ex. dintr-un JSON importat) sunt ignorate, nu opresc aplicația.
-        for bad in [
-            TerrainGrid { heights: vec![Some(1.0)], ..g.clone() },
-            TerrainGrid { nx: 100_000, ..g.clone() },
-            TerrainGrid { max_x: f64::NAN, ..g.clone() },
-            TerrainGrid { max_x: 0.0, ..g.clone() },
-        ] {
+        for bad in
+            [TerrainGrid { heights: vec![Some(1.0)], ..g.clone() }, TerrainGrid { nx: 100_000, ..g.clone() }, TerrainGrid { max_x: f64::NAN, ..g.clone() }, TerrainGrid { max_x: 0.0, ..g.clone() }]
+        {
             assert!(!bad.is_valid());
             assert_eq!(sample_grid(&bad, 5.0, 5.0), None);
             let sc = build(&Input { terrain: Some(&bad), ..inp_ref(&[], &[]) });

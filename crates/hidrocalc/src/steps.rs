@@ -51,11 +51,7 @@ fn step1(ui: &mut Ui, t: &I18n, p: &mut ProjectData) -> Option<u32> {
                 let sources = opts(
                     t,
                     "step1.waterSources",
-                    &[
-                        ("conductă magistrală existentă", "conductaMagistralExistenta"),
-                        ("captare subterană", "captareSubterana"),
-                        ("captare de suprafață", "captareDeSuprafata"),
-                    ],
+                    &[("conductă magistrală existentă", "conductaMagistralExistenta"), ("captare subterană", "captareSubterana"), ("captare de suprafață", "captareDeSuprafata")],
                 );
                 w::combo(&mut c[1], t.t("step1.waterSource"), &mut g.water_source, &sources);
             });
@@ -80,11 +76,7 @@ fn step2(ui: &mut Ui, t: &I18n, p: &mut ProjectData) -> Option<u32> {
                     t.t("step2.growthRate"),
                     &mut c.growth_rate,
                     Some("%/an"),
-                    Some(
-                        t.tip("Rata anuală de creștere a populației, folosită la calculul pe perspectivă de {} ani. Sursă: NP 133.")
-                            .replace("{}", &c.perspective_years.to_string())
-                            .as_str(),
-                    ),
+                    Some(t.tip("Rata anuală de creștere a populației, folosită la calculul pe perspectivă de {} ani. Sursă: NP 133.").replace("{}", &c.perspective_years.to_string()).as_str()),
                 );
                 w::num_field(
                     &mut col[2],
@@ -135,64 +127,64 @@ fn step2(ui: &mut Ui, t: &I18n, p: &mut ProjectData) -> Option<u32> {
             // Tabelul lat se derulează orizontal în propriul card (nu iese din fereastră).
             let table = egui::ScrollArea::horizontal().id_salt("public_consumers_scroll").scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible).auto_shrink([false, true]);
             table.show(ui, |ui| {
-            egui::Grid::new("public_consumers").striped(true).spacing([6.0, 6.0]).min_col_width(60.0).show(ui, |ui| {
-                for h in [
-                    t.t("step2.colInstitutionType").to_string(),
-                    t.t("step2.colUnits").to_string(),
-                    format!("{} (Npi)", t.t("step2.colConsumers")),
-                    t.t("step2.colConsumerType").to_string(),
-                    format!("{} (q_pi)", t.t("step2.colQSpecific")),
-                    t.t("step2.colHoursPerDay").to_string(),
-                    t.t("step2.colKor").to_string(),
-                    String::new(),
-                ] {
-                    ui.label(RichText::new(h.to_uppercase()).size(10.5).color(pl.muted).strong());
-                }
-                ui.end_row();
-                for (i, pc) in c.public_consumers.iter_mut().enumerate() {
-                    let id = egui::Id::unique(("pc", &pc.id));
-                    ui.vertical(|ui| {
-                        ui.set_width(190.0);
-                        let mut kind = pc.kind.clone();
-                        if w::combo_input(ui, id.with("type"), &mut kind, &kinds, 185.0) {
-                            pc.kind = kind;
-                            if let Some(d) = institution_default(&pc.kind) {
-                                pc.unit_type = d.unit_type.into();
-                                pc.q_specific = d.q_specific;
-                                pc.hours_per_day = d.hours_per_day;
-                                pc.kor = d.kor;
-                            }
-                        }
-                        if pc.kind == "Altele" {
-                            ui.add(egui::TextEdit::singleline(&mut pc.custom_type).hint_text(t.t("step2.specifyType")).desired_width(185.0));
-                        }
-                    });
-                    num_cell(ui, id.with("q"), &mut pc.quantity, 70.0);
-                    num_cell(ui, id.with("n"), &mut pc.num_consumers, 80.0);
-                    ui.horizontal(|ui| {
-                        ui.add(egui::TextEdit::singleline(&mut pc.unit_type).hint_text(t.t("step2.consumerTypePlaceholder")).desired_width(110.0));
-                        ui.menu_button("▾", |ui| {
-                            for u in UNIT_TYPE_PRESETS {
-                                if ui.button(*u).clicked() {
-                                    pc.unit_type = (*u).into();
-                                    ui.close();
-                                }
-                            }
-                        });
-                    });
-                    num_cell(ui, id.with("qs"), &mut pc.q_specific, 70.0);
-                    num_cell(ui, id.with("h"), &mut pc.hours_per_day, 60.0);
-                    ui.scope(|ui| {
-                        num_cell(ui, id.with("kor"), &mut pc.kor, 60.0);
-                    })
-                    .response
-                    .on_hover_text(t.t("step2.korTooltip"));
-                    if w::confirm_delete(ui, id.with(("del", i)), t.t("common.delete"), t.t("home.deleteConfirm")) {
-                        remove = Some(i);
+                egui::Grid::new("public_consumers").striped(true).spacing([6.0, 6.0]).min_col_width(60.0).show(ui, |ui| {
+                    for h in [
+                        t.t("step2.colInstitutionType").to_string(),
+                        t.t("step2.colUnits").to_string(),
+                        format!("{} (Npi)", t.t("step2.colConsumers")),
+                        t.t("step2.colConsumerType").to_string(),
+                        format!("{} (q_pi)", t.t("step2.colQSpecific")),
+                        t.t("step2.colHoursPerDay").to_string(),
+                        t.t("step2.colKor").to_string(),
+                        String::new(),
+                    ] {
+                        ui.label(RichText::new(h.to_uppercase()).size(10.5).color(pl.muted).strong());
                     }
                     ui.end_row();
-                }
-            });
+                    for (i, pc) in c.public_consumers.iter_mut().enumerate() {
+                        let id = egui::Id::unique(("pc", &pc.id));
+                        ui.vertical(|ui| {
+                            ui.set_width(190.0);
+                            let mut kind = pc.kind.clone();
+                            if w::combo_input(ui, id.with("type"), &mut kind, &kinds, 185.0) {
+                                pc.kind = kind;
+                                if let Some(d) = institution_default(&pc.kind) {
+                                    pc.unit_type = d.unit_type.into();
+                                    pc.q_specific = d.q_specific;
+                                    pc.hours_per_day = d.hours_per_day;
+                                    pc.kor = d.kor;
+                                }
+                            }
+                            if pc.kind == "Altele" {
+                                ui.add(egui::TextEdit::singleline(&mut pc.custom_type).hint_text(t.t("step2.specifyType")).desired_width(185.0));
+                            }
+                        });
+                        num_cell(ui, id.with("q"), &mut pc.quantity, 70.0);
+                        num_cell(ui, id.with("n"), &mut pc.num_consumers, 80.0);
+                        ui.horizontal(|ui| {
+                            ui.add(egui::TextEdit::singleline(&mut pc.unit_type).hint_text(t.t("step2.consumerTypePlaceholder")).desired_width(110.0));
+                            ui.menu_button("▾", |ui| {
+                                for u in UNIT_TYPE_PRESETS {
+                                    if ui.button(*u).clicked() {
+                                        pc.unit_type = (*u).into();
+                                        ui.close();
+                                    }
+                                }
+                            });
+                        });
+                        num_cell(ui, id.with("qs"), &mut pc.q_specific, 70.0);
+                        num_cell(ui, id.with("h"), &mut pc.hours_per_day, 60.0);
+                        ui.scope(|ui| {
+                            num_cell(ui, id.with("kor"), &mut pc.kor, 60.0);
+                        })
+                        .response
+                        .on_hover_text(t.t("step2.korTooltip"));
+                        if w::confirm_delete(ui, id.with(("del", i)), t.t("common.delete"), t.t("home.deleteConfirm")) {
+                            remove = Some(i);
+                        }
+                        ui.end_row();
+                    }
+                });
             });
             if let Some(i) = remove {
                 c.public_consumers.remove(i);
@@ -309,29 +301,31 @@ fn step4(ui: &mut Ui, t: &I18n, p: &mut ProjectData, r: &ProjectResults) -> Opti
                 w::computed_field(ui, "Ks = (Kss + Ksr) − 1", &w::fmt(wd.ks, 4), None, Some(t.tip("Coeficient de siguranță global, calculat: Ks = (Kss + Ksr) − 1. Sursă: NP 133.")), false);
             });
             ui.add_space(12.0);
-            ui.vertical(|ui| { w::card(ui, |ui| {
-                w::result_card(ui, "QS or max", wd.q_s_or_max_ls, "l/s", true, CardSize::Large);
-                ui.add_space(10.0);
-                let items = [
-                    ("QS zi med", wd.q_s_zi_med, "m³/zi", wn.q_n_zi_med, "Q_s_zi_med"),
-                    ("QS zi max", wd.q_s_zi_max, "m³/zi", wn.q_n_zi_max, "Q_s_zi_max"),
-                    ("QS or max", wd.q_s_or_max, "m³/h", wn.q_n_or_max, "Q_s_or_max"),
-                ];
-                ui.columns(3, |c| {
-                    for (i, (label, v, unit, _, _)) in items.iter().enumerate() {
-                        w::result_card(&mut c[i], label, *v, unit, false, CardSize::Normal);
+            ui.vertical(|ui| {
+                w::card(ui, |ui| {
+                    w::result_card(ui, "QS or max", wd.q_s_or_max_ls, "l/s", true, CardSize::Large);
+                    ui.add_space(10.0);
+                    let items = [
+                        ("QS zi med", wd.q_s_zi_med, "m³/zi", wn.q_n_zi_med, "Q_s_zi_med"),
+                        ("QS zi max", wd.q_s_zi_max, "m³/zi", wn.q_n_zi_max, "Q_s_zi_max"),
+                        ("QS or max", wd.q_s_or_max, "m³/h", wn.q_n_or_max, "Q_s_or_max"),
+                    ];
+                    ui.columns(3, |c| {
+                        for (i, (label, v, unit, _, _)) in items.iter().enumerate() {
+                            w::result_card(&mut c[i], label, *v, unit, false, CardSize::Normal);
+                        }
+                    });
+                    ui.add_space(6.0);
+                    let mut lines = vec![
+                        format!("Q_s = k_p × k_s × Q_n    |    k_p = {}   k_s = (k_ss + k_sr) − 1 = ({} + {}) − 1 = {}", k.kp, k.kss, k.ksr, w::fmt(wd.ks, 4)),
+                        format!("Q_s_or_max = {} × 1000 / 3600 = {} l/s", w::fmt(wd.q_s_or_max, 3), w::fmt(wd.q_s_or_max_ls, 3)),
+                    ];
+                    for (_, v, _, qn, name) in items {
+                        lines.push(format!("{name} = {} × {} × {} = {}", k.kp, w::fmt(wd.ks_safe, 4), w::fmt(qn, 3), w::fmt(v, 3)));
                     }
+                    w::formula(ui, &lines);
                 });
-                ui.add_space(6.0);
-                let mut lines = vec![
-                    format!("Q_s = k_p × k_s × Q_n    |    k_p = {}   k_s = (k_ss + k_sr) − 1 = ({} + {}) − 1 = {}", k.kp, k.kss, k.ksr, w::fmt(wd.ks, 4)),
-                    format!("Q_s_or_max = {} × 1000 / 3600 = {} l/s", w::fmt(wd.q_s_or_max, 3), w::fmt(wd.q_s_or_max_ls, 3)),
-                ];
-                for (_, v, _, qn, name) in items {
-                    lines.push(format!("{name} = {} × {} × {} = {}", k.kp, w::fmt(wd.ks_safe, 4), w::fmt(qn, 3), w::fmt(v, 3)));
-                }
-                w::formula(ui, &lines);
-            }); });
+            });
         });
         w::step_nav(ui, t, Some(3), Some(5))
     })
@@ -376,15 +370,39 @@ fn step5(ui: &mut Ui, t: &I18n, p: &mut ProjectData, r: &ProjectResults) -> Opti
         w::card(ui, |ui| {
             w::section_title(ui, &format!("{}  ·  sursă V_RI", t.t("step5.exterior")));
             ui.columns(3, |c| {
-                nf(&mut c[0], t.t("step5.debitHydrant").to_string(), &mut h.debit_hydrant, Some("l/s"), Some(t.tip("Debitul unui hidrant exterior pentru stingerea incendiului. Sursă: P 118/2-2013, art. 6.28.")));
-                nf(&mut c[1], t.t("step5.operatingTime").to_string(), &mut h.operating_time, Some("ore"), Some(t.tip("Durata teoretică de funcționare a hidranților la incendiu. Sursă: P 118/2-2013, art. 6.19.")));
-                nf(&mut c[2], t.t("step5.simultaneousFires").to_string(), &mut h.simultaneous_fires, None, Some(t.tip("Numărul de incendii simultane considerate la dimensionare. Sursă: P 118/2-2013, art. 6.23.")));
+                nf(
+                    &mut c[0],
+                    t.t("step5.debitHydrant").to_string(),
+                    &mut h.debit_hydrant,
+                    Some("l/s"),
+                    Some(t.tip("Debitul unui hidrant exterior pentru stingerea incendiului. Sursă: P 118/2-2013, art. 6.28.")),
+                );
+                nf(
+                    &mut c[1],
+                    t.t("step5.operatingTime").to_string(),
+                    &mut h.operating_time,
+                    Some("ore"),
+                    Some(t.tip("Durata teoretică de funcționare a hidranților la incendiu. Sursă: P 118/2-2013, art. 6.19.")),
+                );
+                nf(
+                    &mut c[2],
+                    t.t("step5.simultaneousFires").to_string(),
+                    &mut h.simultaneous_fires,
+                    None,
+                    Some(t.tip("Numărul de incendii simultane considerate la dimensionare. Sursă: P 118/2-2013, art. 6.23.")),
+                );
             });
             ui.add_space(8.0);
             ui.columns(3, |c| {
                 nf(&mut c[0], t.t("step5.coeffA").to_string(), &mut h.coeff_a, None, Some(t.tip("Coeficient funcție de regimul de presiune al rețelei de distribuție. Sursă: NP 133.")));
                 nf(&mut c[1], t.t("step5.timpRefacere").to_string(), &mut h.timp_refacere, Some("ore"), Some(t.tip("Timpul de refacere a rezervei intangibile de incendiu. Sursă: NP 133.")));
-                nf(&mut c[2], t.t("step5.minPressure").to_string(), &mut h.min_pressure, Some("bar"), Some(t.tip("Presiunea minimă necesară la hidranții exteriori (informativ). Sursă: P 118/2-2013, art. 6.30.")));
+                nf(
+                    &mut c[2],
+                    t.t("step5.minPressure").to_string(),
+                    &mut h.min_pressure,
+                    Some("bar"),
+                    Some(t.tip("Presiunea minimă necesară la hidranții exteriori (informativ). Sursă: P 118/2-2013, art. 6.30.")),
+                );
             });
             ui.add_space(8.0);
             ui.columns(3, |c| {
@@ -401,8 +419,20 @@ fn step5(ui: &mut Ui, t: &I18n, p: &mut ProjectData, r: &ProjectResults) -> Opti
             });
             ui.add_space(8.0);
             ui.columns(3, |c| {
-                nf(&mut c[0], t.t("step5.minPressureInt").to_string(), &mut h.min_pressure_int, Some("bar"), Some(t.tip("Presiunea minimă la hidranții interiori (informativ, pentru documentație). Sursă: P 118/2-2013.")));
-                nf(&mut c[1], t.t("step5.numHydrantsInt").to_string(), &mut h.num_hydrants_int, None, Some(t.tip("Numărul de hidranți interiori (informativ, pentru documentație). Sursă: P 118/2-2013.")));
+                nf(
+                    &mut c[0],
+                    t.t("step5.minPressureInt").to_string(),
+                    &mut h.min_pressure_int,
+                    Some("bar"),
+                    Some(t.tip("Presiunea minimă la hidranții interiori (informativ, pentru documentație). Sursă: P 118/2-2013.")),
+                );
+                nf(
+                    &mut c[1],
+                    t.t("step5.numHydrantsInt").to_string(),
+                    &mut h.num_hydrants_int,
+                    None,
+                    Some(t.tip("Numărul de hidranți interiori (informativ, pentru documentație). Sursă: P 118/2-2013.")),
+                );
             });
         });
         w::step_nav(ui, t, Some(4), Some(6))
@@ -420,26 +450,54 @@ fn step6(ui: &mut Ui, t: &I18n, p: &mut ProjectData, r: &ProjectResults) -> Opti
         let (wd, hy, df) = (&r.water_demand, &r.hydrants, &r.design_flows);
         let rows = [
             (
-                "C", pl.cat_capture, t.t("step6.captare"), t.t("step6.captareSubtitle"), "Q_IC", df.q_ic, "m³/zi",
+                "C",
+                pl.cat_capture,
+                t.t("step6.captare"),
+                t.t("step6.captareSubtitle"),
+                "Q_IC",
+                df.q_ic,
+                "m³/zi",
                 vec![format!("Q_IC = Q_s_zi_max + kp × ks × Q_RI = {} + {} × {} × {} = {} m³/zi", w::fmt(wd.q_s_zi_max, 3), k.kp, w::fmt(wd.ks_safe, 4), w::fmt(hy.q_ri, 3), w::fmt(df.q_ic, 3))],
             ),
             (
-                "T", pl.cat_treat, t.t("step6.stTratare"), t.t("step6.stTratareSubtitle"), "Q'_IC", df.q_ic_prime, "m³/zi",
+                "T",
+                pl.cat_treat,
+                t.t("step6.stTratare"),
+                t.t("step6.stTratareSubtitle"),
+                "Q'_IC",
+                df.q_ic_prime,
+                "m³/zi",
                 vec![format!("Q'_IC = Q_IC × k_sr / k_s = {} × {} / {} = {} m³/zi", w::fmt(df.q_ic, 3), k.ksr, w::fmt(wd.ks_safe, 4), w::fmt(df.q_ic_prime, 3))],
             ),
             (
-                "R", pl.cat_rezervor, t.t("step6.rezervor"), t.t("step6.rezervorSubtitle"), "Q_IIC", df.q_iic, "m³/h",
+                "R",
+                pl.cat_rezervor,
+                t.t("step6.rezervor"),
+                t.t("step6.rezervorSubtitle"),
+                "Q_IIC",
+                df.q_iic,
+                "m³/h",
                 vec![
                     format!("Q_IIC = Q_s_or_max + 3.6 × n_inc_int × Q_ii = {} + 3.6 × {} × {} = {} m³/h", w::fmt(wd.q_s_or_max, 3), h.simultaneous_fires_int, h.debit_hydrant_int, w::fmt(df.q_iic, 3)),
-                    format!("Q_IIV = Q_s_or_max + 3.6 × n_inc_ext × Q_ie = {} + 3.6 × {} × {} = {} m³/h = {} l/s", w::fmt(wd.q_s_or_max, 3), h.simultaneous_fires, h.debit_hydrant, w::fmt(df.q_iiv, 3), w::fmt(df.q_iiv_ls, 3)),
+                    format!(
+                        "Q_IIV = Q_s_or_max + 3.6 × n_inc_ext × Q_ie = {} + 3.6 × {} × {} = {} m³/h = {} l/s",
+                        w::fmt(wd.q_s_or_max, 3),
+                        h.simultaneous_fires,
+                        h.debit_hydrant,
+                        w::fmt(df.q_iiv, 3),
+                        w::fmt(df.q_iiv_ls, 3)
+                    ),
                 ],
             ),
             (
-                "D", pl.teal, t.t("step6.retea"), t.t("step6.reteaSubtitle"), "Q_IIV", df.q_iiv, "m³/h",
-                vec![
-                    format!("Q_dim = max(Q_IIC, Q_IIV) = max({}, {}) = {} m³/h", w::fmt(df.q_iic, 3), w::fmt(df.q_iiv, 3), w::fmt(df.q_dim_network, 3)),
-                    t.t("step6.qDimExplanation").to_string(),
-                ],
+                "D",
+                pl.teal,
+                t.t("step6.retea"),
+                t.t("step6.reteaSubtitle"),
+                "Q_IIV",
+                df.q_iiv,
+                "m³/h",
+                vec![format!("Q_dim = max(Q_IIC, Q_IIV) = max({}, {}) = {} m³/h", w::fmt(df.q_iic, 3), w::fmt(df.q_iiv, 3), w::fmt(df.q_dim_network, 3)), t.t("step6.qDimExplanation").to_string()],
             ),
         ];
         for pair in rows.chunks(2) {
@@ -471,8 +529,20 @@ fn step7(ui: &mut Ui, t: &I18n, p: &mut ProjectData, r: &ProjectResults) -> Opti
         w::card(ui, |ui| {
             w::section_title(ui, t.t("step7.cotesGeometrie"));
             ui.columns(3, |c| {
-                w::num_field(&mut c[0], t.t("step7.cotaTopo"), &mut rz.cota_teren, Some("mdMN"), Some(t.tip("Cota topografică minimă din localitate (mdMN), reper pentru calculul presiunilor. Date de teren.")));
-                w::num_field(&mut c[1], t.t("step7.hb"), &mut rz.hb, Some("mH₂O"), Some(t.tip("Presiunea de serviciu necesară la branșament, funcție de regimul maxim al clădirilor de locuit. Sursă: NP 133.")));
+                w::num_field(
+                    &mut c[0],
+                    t.t("step7.cotaTopo"),
+                    &mut rz.cota_teren,
+                    Some("mdMN"),
+                    Some(t.tip("Cota topografică minimă din localitate (mdMN), reper pentru calculul presiunilor. Date de teren.")),
+                );
+                w::num_field(
+                    &mut c[1],
+                    t.t("step7.hb"),
+                    &mut rz.hb,
+                    Some("mH₂O"),
+                    Some(t.tip("Presiunea de serviciu necesară la branșament, funcție de regimul maxim al clădirilor de locuit. Sursă: NP 133.")),
+                );
                 w::num_field(&mut c[2], t.t("step7.iMed"), &mut rz.i_med, None, Some(t.tip("Panta hidraulică medie a rețelei de distribuție. Sursă: NP 133.")));
             });
             ui.add_space(8.0);
@@ -486,7 +556,14 @@ fn step7(ui: &mut Ui, t: &I18n, p: &mut ProjectData, r: &ProjectResults) -> Opti
                         }
                     });
                 }
-                w::computed_field(&mut c[1], t.t("step7.hr"), &w::fmt(rr.hr, 4), Some("mH₂O"), Some(t.tip("Pierderea de sarcină pe circuitul rezervor–branșament, calculată: i_med × L_totală. Sursă: NP 133.")), false);
+                w::computed_field(
+                    &mut c[1],
+                    t.t("step7.hr"),
+                    &w::fmt(rr.hr, 4),
+                    Some("mH₂O"),
+                    Some(t.tip("Pierderea de sarcină pe circuitul rezervor–branșament, calculată: i_med × L_totală. Sursă: NP 133.")),
+                    false,
+                );
                 w::computed_field(&mut c[2], t.t("step7.cotaRadier"), &w::fmt(rr.cota_radier, 2), Some("mdMN"), None, cr_warning);
                 if cr_warning {
                     c[2].label(RichText::new(t.tf("step7.crWarning", &[("diff", &w::fmt(cr_diff, 2))])).size(11.5).color(pl.danger));
@@ -525,10 +602,8 @@ fn step7(ui: &mut Ui, t: &I18n, p: &mut ProjectData, r: &ProjectResults) -> Opti
             if cil || rz.forma == "paralelipipedic" {
                 ui.add_space(16.0);
                 ui.label(RichText::new(t.t(if cil { "step7.dimCilindric" } else { "step7.dimParalelipipedic" }).to_uppercase()).size(11.5).color(pl.muted).strong());
-                let mut fields: Vec<(String, &mut f64, &str)> = vec![
-                    (t.t("step7.dimInaltimeTotala").to_string(), &mut rz.dim_inaltime_totala, "mm"),
-                    (t.t("step7.dimInaltimeRezervot").to_string(), &mut rz.dim_inaltime_rezervot, "mm"),
-                ];
+                let mut fields: Vec<(String, &mut f64, &str)> =
+                    vec![(t.t("step7.dimInaltimeTotala").to_string(), &mut rz.dim_inaltime_totala, "mm"), (t.t("step7.dimInaltimeRezervot").to_string(), &mut rz.dim_inaltime_rezervot, "mm")];
                 if cil {
                     fields.push((t.t("step7.dimDiametruRezervot").to_string(), &mut rz.dim_diametru_rezervot, "mm"));
                 } else {
@@ -559,7 +634,13 @@ fn step7(ui: &mut Ui, t: &I18n, p: &mut ProjectData, r: &ProjectResults) -> Opti
             w::section_title(ui, t.t("step7.volumCompensare"));
             ui.label(RichText::new("V_comp = c × Q_s_zi_max [m³]").monospace().size(11.5).color(pl.muted));
             ui.columns(3, |c| {
-                w::num_field(&mut c[0], t.t("step7.cCoef"), &mut rz.c, None, Some(t.tip("Valoare subunitară (< 1). Implicit 0.15 conform NP 133. Reprezintă fracțiunea din debitul zilnic maxim necesară pentru compensarea variațiilor orare.")));
+                w::num_field(
+                    &mut c[0],
+                    t.t("step7.cCoef"),
+                    &mut rz.c,
+                    None,
+                    Some(t.tip("Valoare subunitară (< 1). Implicit 0.15 conform NP 133. Reprezintă fracțiunea din debitul zilnic maxim necesară pentru compensarea variațiilor orare.")),
+                );
                 w::computed_field(&mut c[1], "V_comp", &w::fmt(rr.v_compensation, 3), Some("m³"), Some(t.tip("Volumul de compensare orară, calculat: V_comp = c × Q_s_zi_max. Sursă: NP 133.")), false);
             });
             ui.add_space(4.0);
@@ -579,18 +660,18 @@ fn step7(ui: &mut Ui, t: &I18n, p: &mut ProjectData, r: &ProjectResults) -> Opti
             ui.columns(3, |c| {
                 w::num_field(&mut c[0], t.t("step7.qa"), &mut rz.qa, Some("m³/h"), None);
                 w::computed_field(&mut c[1], "Q_min", &w::fmt(rr.q_min, 3), Some("m³/h"), Some(t.tip("Debitul minim orar, calculat: Q_min = coef × Q_s_zi_max / 24. Sursă: NP 133.")), false);
-                w::computed_field(&mut c[2], "V_avarie", &w::fmt(rr.v_emergency, 3), Some("m³"), Some(t.tip("Volumul de avarie, calculat: V_av = Q_min × (T_av − T_i) − Q_a × T_av. Sursă: NP 133.")), false);
+                w::computed_field(
+                    &mut c[2],
+                    "V_avarie",
+                    &w::fmt(rr.v_emergency, 3),
+                    Some("m³"),
+                    Some(t.tip("Volumul de avarie, calculat: V_av = Q_min × (T_av − T_i) − Q_a × T_av. Sursă: NP 133.")),
+                    false,
+                );
             });
             ui.add_space(4.0);
-            let mut lines = vec![format!(
-                "V_av = Q_min × (T_av – T_i) – Q_a × T_av = {} × ({} – {}) – {} × {} = {} m³",
-                w::fmt(rr.q_min, 3),
-                rz.t_av,
-                rz.ti,
-                rz.qa,
-                rz.t_av,
-                w::fmt(rr.v_emergency, 3)
-            )];
+            let mut lines =
+                vec![format!("V_av = Q_min × (T_av – T_i) – Q_a × T_av = {} × ({} – {}) – {} × {} = {} m³", w::fmt(rr.q_min, 3), rz.t_av, rz.ti, rz.qa, rz.t_av, w::fmt(rr.v_emergency, 3))];
             if rr.v_emergency < 0.0 {
                 lines.push(t.t("step7.vAvarieNote").to_string());
             }
@@ -611,16 +692,7 @@ fn step7(ui: &mut Ui, t: &I18n, p: &mut ProjectData, r: &ProjectResults) -> Opti
                 w::result_card(&mut c[1], t.t("step7.vTotalCard"), rr.v_total, "m³", true, CardSize::Large);
             });
             ui.add_space(6.0);
-            w::formula(
-                ui,
-                &[format!(
-                    "V_rez = {} + {} + {} = {} m³",
-                    w::fmt(rr.v_compensation, 3),
-                    w::fmt(rr.v_fire_reserve, 3),
-                    w::fmt(rr.v_emergency.max(0.0), 3),
-                    w::fmt(rr.v_total, 3)
-                )],
-            );
+            w::formula(ui, &[format!("V_rez = {} + {} + {} = {} m³", w::fmt(rr.v_compensation, 3), w::fmt(rr.v_fire_reserve, 3), w::fmt(rr.v_emergency.max(0.0), 3), w::fmt(rr.v_total, 3))]);
         });
         w::step_nav(ui, t, Some(6), Some(8))
     })

@@ -59,7 +59,15 @@ fn valid_z(z: f64) -> bool {
 
 fn to_latlng(a: f64, b: f64, crs: Crs) -> Option<LatLng> {
     let geo = a.abs() <= 180.0 && b.abs() <= 180.0;
-    let mode = if crs == Crs::Auto { if geo { Crs::Wgs84 } else { Crs::Stereo70 } } else { crs };
+    let mode = if crs == Crs::Auto {
+        if geo {
+            Crs::Wgs84
+        } else {
+            Crs::Stereo70
+        }
+    } else {
+        crs
+    };
     match mode {
         Crs::Wgs84 => {
             if !geo {
@@ -81,7 +89,11 @@ fn num(s: &str) -> Option<f64> {
     let t: String = s.trim().chars().filter(|c| !c.is_whitespace()).collect::<String>().replacen(',', ".", 1);
     let ok = !t.is_empty()
         && t.chars().enumerate().all(|(i, c)| c.is_ascii_digit() || c == '.' || c == 'e' || c == 'E' || ((c == '-' || c == '+') && (i == 0 || matches!(t.as_bytes()[i - 1], b'e' | b'E'))));
-    if ok { t.parse::<f64>().ok().filter(|v| v.is_finite()) } else { None }
+    if ok {
+        t.parse::<f64>().ok().filter(|v| v.is_finite())
+    } else {
+        None
+    }
 }
 
 fn split_row(line: &str) -> Vec<String> {
@@ -162,12 +174,7 @@ fn parse_kml(doc: &roxmltree::Document) -> ParseResult {
         let name = child_text(pm, "name").map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
         // Implicit KML e „clampToGround”: altitudinea din fișier nu e cota terenului.
         let has_z = child_text(pm, "altitudeMode").map(str::trim).unwrap_or("clampToGround") == "absolute";
-        let tuples: Vec<&str> = pm
-            .descendants()
-            .filter(|n| n.tag_name().name() == "coordinates")
-            .filter_map(|n| n.text())
-            .flat_map(str::split_whitespace)
-            .collect();
+        let tuples: Vec<&str> = pm.descendants().filter(|n| n.tag_name().name() == "coordinates").filter_map(|n| n.text()).flat_map(str::split_whitespace).collect();
         let multi = tuples.len() > 1;
         for (i, tuple) in tuples.iter().enumerate() {
             let parts: Vec<f64> = tuple.split(',').map(|v| v.trim().parse::<f64>().unwrap_or(f64::NAN)).collect();
@@ -194,7 +201,13 @@ pub fn parse_file(file_name: &str, text: &str, crs: Crs) -> ParseResult {
     let gpx = ext == "gpx" || head.contains("<gpx");
     if gpx || ext == "kml" || head.contains("<kml") {
         return match roxmltree::Document::parse(text) {
-            Ok(doc) => if gpx { parse_gpx(&doc) } else { parse_kml(&doc) },
+            Ok(doc) => {
+                if gpx {
+                    parse_gpx(&doc)
+                } else {
+                    parse_kml(&doc)
+                }
+            }
             Err(_) => ParseResult { skipped_invalid: 1, ..ParseResult::new(if gpx { Format::Gpx } else { Format::Kml }) },
         };
     }

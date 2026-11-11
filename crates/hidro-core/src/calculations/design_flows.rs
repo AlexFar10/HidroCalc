@@ -34,35 +34,15 @@ pub struct DesignFlowResults {
     pub q_dim_network: f64,
 }
 
-pub fn calculate_design_flows(
-    demand: DemandInput,
-    hydrant_results: HydrantResultsInput,
-    hydrant_data: HydrantDataInput,
-    coeff: CoeffInput,
-) -> DesignFlowResults {
+pub fn calculate_design_flows(demand: DemandInput, hydrant_results: HydrantResultsInput, hydrant_data: HydrantDataInput, coeff: CoeffInput) -> DesignFlowResults {
     let q_ic = demand.q_s_zi_max + coeff.kp * demand.ks_safe * hydrant_results.q_ri;
-    let q_ic_prime = if demand.ks_safe != 0.0 {
-        q_ic * coeff.ksr / demand.ks_safe
-    } else {
-        q_ic
-    };
-    let q_iic = demand.q_s_or_max
-        + 3.6
-            * hydrant_data.simultaneous_fires_int
-            * hydrant_data.debit_hydrant_int;
-    let q_iiv = demand.q_s_or_max
-        + 3.6 * hydrant_data.simultaneous_fires * hydrant_data.debit_hydrant;
+    let q_ic_prime = if demand.ks_safe != 0.0 { q_ic * coeff.ksr / demand.ks_safe } else { q_ic };
+    let q_iic = demand.q_s_or_max + 3.6 * hydrant_data.simultaneous_fires_int * hydrant_data.debit_hydrant_int;
+    let q_iiv = demand.q_s_or_max + 3.6 * hydrant_data.simultaneous_fires * hydrant_data.debit_hydrant;
     let q_iiv_ls = (q_iiv * 1000.0) / 3600.0;
     let q_dim_network = f64::max(q_iic, q_iiv);
 
-    DesignFlowResults {
-        q_ic,
-        q_ic_prime,
-        q_iic,
-        q_iiv,
-        q_iiv_ls,
-        q_dim_network,
-    }
+    DesignFlowResults { q_ic, q_ic_prime, q_iic, q_iiv, q_iiv_ls, q_dim_network }
 }
 
 #[cfg(test)]

@@ -177,12 +177,9 @@ fn visuals(p: &Palette, dark: bool) -> Visuals {
     w.noninteractive.bg_stroke = Stroke::new(1.0, p.border);
     w.noninteractive.fg_stroke = Stroke::new(1.0, p.ink2);
     w.noninteractive.corner_radius = r;
-    for (wv, fill, stroke) in [
-        (&mut w.inactive, p.panel, p.border),
-        (&mut w.hovered, p.accent_soft, p.border_strong),
-        (&mut w.active, p.accent_soft, p.accent),
-        (&mut w.open, p.accent_soft, p.border_strong),
-    ] {
+    for (wv, fill, stroke) in
+        [(&mut w.inactive, p.panel, p.border), (&mut w.hovered, p.accent_soft, p.border_strong), (&mut w.active, p.accent_soft, p.accent), (&mut w.open, p.accent_soft, p.border_strong)]
+    {
         wv.bg_fill = fill;
         wv.weak_bg_fill = fill;
         wv.bg_stroke = Stroke::new(1.0, stroke);
@@ -210,10 +207,7 @@ fn install_fonts(ctx: &egui::Context) {
     ] {
         fonts.font_data.insert(name.into(), Arc::new(egui::FontData::from_static(data)));
     }
-    for (family, names) in [
-        (egui::FontFamily::Proportional, ["Roboto", "DejaVuSans"]),
-        (egui::FontFamily::Monospace, ["RobotoMono", "DejaVuSansMono"]),
-    ] {
+    for (family, names) in [(egui::FontFamily::Proportional, ["Roboto", "DejaVuSans"]), (egui::FontFamily::Monospace, ["RobotoMono", "DejaVuSansMono"])] {
         let list = fonts.families.entry(family).or_default();
         list.retain(|n| n != "Ubuntu-Light" && n != "Hack");
         for (i, n) in names.iter().enumerate() {
@@ -250,7 +244,11 @@ mod contrast_tests {
 
     fn lin(c: u8) -> f64 {
         let s = c as f64 / 255.0;
-        if s <= 0.03928 { s / 12.92 } else { ((s + 0.055) / 1.055).powf(2.4) }
+        if s <= 0.03928 {
+            s / 12.92
+        } else {
+            ((s + 0.055) / 1.055).powf(2.4)
+        }
     }
     fn lum(c: Color32) -> f64 {
         0.2126 * lin(c.r()) + 0.7152 * lin(c.g()) + 0.0722 * lin(c.b())

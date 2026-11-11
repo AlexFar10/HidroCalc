@@ -40,7 +40,4 @@ pub fn institution_default(kind: &str) -> Option<&'static InstitutionDefault> {
 }
 
 /// Tipuri de consumatori sugerate în tabelul consumatorilor publici.
-pub const UNIT_TYPE_PRESETS: &[&str] = &[
-    "angajat", "angajați", "elevi", "copii", "consumatori", "clienți", "scaune", "paturi", "auto",
-    "enoriași", "unități", "loc", "cap animal",
-];
+pub const UNIT_TYPE_PRESETS: &[&str] = &["angajat", "angajați", "elevi", "copii", "consumatori", "clienți", "scaune", "paturi", "auto", "enoriași", "unități", "loc", "cap animal"];

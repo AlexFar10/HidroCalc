@@ -28,54 +28,43 @@ const UNDO_MAX: usize = 60;
 const fn rgb(c: u32) -> Color32 {
     Color32::from_rgb((c >> 16) as u8, (c >> 8) as u8, c as u8)
 }
-thread_local! {
-    /// Tema curentă a canvasului (setată la începutul desenării).
-    static DARK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+/// Culorile desenului pentru tema curentă (luminoasă sau întunecată).
+#[derive(Clone, Copy)]
+struct Colors {
+    bg: Color32,
+    tronson: Color32,
+    tr_label: Color32,
+    red: Color32,
+    camin_g: Color32,
+    camin_a: Color32,
+    selected: Color32,
+    grid: Color32,
+    snap: Color32,
+    sub_fill: Color32,
+    sub_brd: Color32,
+    sub_text: Color32,
+    q: Color32,
 }
-fn dark() -> bool {
-    DARK.with(|d| d.get())
-}
-fn themed(light: u32, dark_c: u32) -> Color32 {
-    rgb(if dark() { dark_c } else { light })
-}
-fn c_bg() -> Color32 {
-    themed(0xFAFBFD, 0x10161D)
-}
-fn c_tronson() -> Color32 {
-    themed(0x1A1A1A, 0xD9DEE6)
-}
-fn c_tr_label() -> Color32 {
-    themed(0xDC2626, 0xE58B87)
-}
-fn c_red() -> Color32 {
-    themed(0xDC2626, 0xE58B87)
-}
-fn c_camin_g() -> Color32 {
-    themed(0x1D4ED8, 0x6EA0E8)
-}
-fn c_camin_a() -> Color32 {
-    themed(0x3B82F6, 0x8DB6F0)
-}
-fn c_selected() -> Color32 {
-    themed(0xF59E0B, 0xF2B84B)
-}
-fn c_grid() -> Color32 {
-    themed(0xE5E9F0, 0x232C38)
-}
-fn c_snap() -> Color32 {
-    themed(0x3B82F6, 0x6EA0E8)
-}
-fn c_sub_fill() -> Color32 {
-    themed(0xF0FDFA, 0x132629)
-}
-fn c_sub_brd() -> Color32 {
-    themed(0x0D9488, 0x3FB5A8)
-}
-fn c_sub_text() -> Color32 {
-    themed(0x0F766E, 0x5CCFC2)
-}
-fn c_q() -> Color32 {
-    themed(0x2563EB, 0x7FB0F0)
+
+impl Colors {
+    fn new(dark: bool) -> Self {
+        let c = |light: u32, dark_c: u32| rgb(if dark { dark_c } else { light });
+        Self {
+            bg: c(0xFAFBFD, 0x10161D),
+            tronson: c(0x1A1A1A, 0xD9DEE6),
+            tr_label: c(0xDC2626, 0xE58B87),
+            red: c(0xDC2626, 0xE58B87),
+            camin_g: c(0x1D4ED8, 0x6EA0E8),
+            camin_a: c(0x3B82F6, 0x8DB6F0),
+            selected: c(0xF59E0B, 0xF2B84B),
+            grid: c(0xE5E9F0, 0x232C38),
+            snap: c(0x3B82F6, 0x6EA0E8),
+            sub_fill: c(0xF0FDFA, 0x132629),
+            sub_brd: c(0x0D9488, 0x3FB5A8),
+            sub_text: c(0x0F766E, 0x5CCFC2),
+            q: c(0x2563EB, 0x7FB0F0),
+        }
+    }
 }
 
 /// Culorile predefinite pentru tronsoane (cheile de traducere din `step8.*`).
@@ -298,11 +287,11 @@ pub fn scale_ratio(p: &ProjectData) -> f64 {
 
 // ─── Geometrie ────────────────────────────────────────────────────────────────
 
-fn parse_color(s: Option<&str>) -> Option<Color32> {
+fn parse_color(s: Option<&str>, cl: Colors) -> Option<Color32> {
     let h = s?.strip_prefix('#')?;
     let col = (h.len() == 6).then(|| u32::from_str_radix(h, 16).ok().map(rgb)).flatten()?;
     // Culoarea implicită (aproape negru) urmează tema, ca să se vadă și pe fundal închis.
-    Some(if col == rgb(0x1A1A1A) { c_tronson() } else { col })
+    Some(if col == rgb(0x1A1A1A) { cl.tronson } else { col })
 }
 
 fn end_of(el: &SchemaElement) -> (f32, f32) {
@@ -361,9 +350,7 @@ fn hit_test(el: &SchemaElement, p: Pos2, t: f32) -> Option<Hit> {
             let r = Rect::from_min_size(Pos2::new(x - w / 2.0, y - h), Vec2::new(w, h));
             (r.contains(p) || p.distance(Pos2::new(x, y)) < t).then_some(Hit::Body)
         }
-        SchemaKind::Hidrant | SchemaKind::CaminGrav | SchemaKind::CaminAer => {
-            (p.distance(Pos2::new(x, y)) < el.r.map_or(CIRCLE_R, |v| v as f32) + t).then_some(Hit::Body)
-        }
+        SchemaKind::Hidrant | SchemaKind::CaminGrav | SchemaKind::CaminAer => (p.distance(Pos2::new(x, y)) < el.r.map_or(CIRCLE_R, |v| v as f32) + t).then_some(Hit::Body),
         SchemaKind::Text => {
             let fs = el.font_size.unwrap_or(12.0) as f32;
             ((p.x - x).abs() < 60.0 && p.y >= y - 4.0 && p.y <= y + fs + 4.0).then_some(Hit::Body)
@@ -392,9 +379,7 @@ fn label_pos(el: &SchemaElement, vs: f32) -> Option<Pos2> {
             Pos2::new((x + ex) / 2.0, (y + ey) / 2.0) + perp * 15.0 * vs + off
         }
         SchemaKind::Rezervor | SchemaKind::Sursa => Pos2::new(x, y + DOT_R * vs + 3.0 + 6.0 * vs) + off,
-        SchemaKind::Hidrant | SchemaKind::CaminGrav | SchemaKind::CaminAer => {
-            Pos2::new(x, y + el.r.map_or(CIRCLE_R, |v| v as f32) * vs + 3.0 + 6.0 * vs) + off
-        }
+        SchemaKind::Hidrant | SchemaKind::CaminGrav | SchemaKind::CaminAer => Pos2::new(x, y + el.r.map_or(CIRCLE_R, |v| v as f32) * vs + 3.0 + 6.0 * vs) + off,
         SchemaKind::Subsistem => Pos2::new(x, y - el.h.map_or(SUB_H, |v| v as f32) / 2.0 + 14.0) + off,
         SchemaKind::Text => return None,
     })
@@ -657,67 +642,81 @@ impl CanvasUi {
             }
         }
 
-        let drawing = !matches!(self.tool, Tool::Select);
-        if drawing {
-            // Cursor de tastatură: săgețile îl mută, Enter = click în acel punct.
-            let cur = self.kb_cursor.unwrap_or_else(|| self.to_world(origin, rect.center()));
-            let step = 20.0 / self.zoom * if shift { 5.0 } else { 1.0 };
-            let moved = cur + Vec2::new(dx, dy) * step;
-            self.kb_cursor = Some(moved);
-            if let Some(start) = self.kb_tronson {
-                self.drag = Drag::Draw { start, end: moved };
-            }
-            if enter {
-                if self.tool == Tool::Tronson {
-                    match self.kb_tronson.take() {
-                        None => {
-                            let level = self.level(p).clone();
-                            let (sp, _) = self.snap(p, &level, moved, None);
-                            self.kb_tronson = Some(sp);
-                            self.drag = Drag::Draw { start: sp, end: sp };
-                        }
-                        Some(start) => {
-                            self.drag = Drag::None;
-                            let level = self.level(p).clone();
-                            let (end, _) = self.snap(p, &level, moved, None);
-                            self.finish_tronson(p, start, end);
-                        }
-                    }
-                } else {
-                    self.click_at(p, moved, thr);
-                }
-            }
+        let step = Vec2::new(dx, dy);
+        if matches!(self.tool, Tool::Select) {
+            self.kb_select(p, step, shift, alt, enter);
         } else {
-            self.kb_cursor = None;
-            let selected = self.selected.clone();
-            if (dx != 0.0 || dy != 0.0) && !alt && selected.is_some() {
-                // Element ales: săgețile îl mută (Shift = pas mare); cu Alt se deplasează vederea.
-                let step = if shift { 50.0 } else { 10.0 };
-                if self.kb_move_id != selected {
-                    self.checkpoint(p);
-                    self.kb_move_id = selected.clone();
-                }
-                if let Some(e) = self.level(p).iter_mut().find(|e| Some(&e.id) == selected.as_ref()) {
-                    e.x += (dx * step) as f64;
-                    e.y += (dy * step) as f64;
-                    if let (Some(x2), Some(y2)) = (e.x2, e.y2) {
-                        e.x2 = Some(x2 + (dx * step) as f64);
-                        e.y2 = Some(y2 + (dy * step) as f64);
+            self.kb_draw(p, rect, step, shift, enter, thr);
+        }
+    }
+
+    /// Tastatura cu un instrument de desen: săgețile mută cursorul, Enter = click în acel punct.
+    fn kb_draw(&mut self, p: &mut ProjectData, rect: Rect, dir: Vec2, shift: bool, enter: bool, thr: f32) {
+        let origin = rect.min;
+        let (dx, dy) = (dir.x, dir.y);
+        // Cursor de tastatură: săgețile îl mută, Enter = click în acel punct.
+        let cur = self.kb_cursor.unwrap_or_else(|| self.to_world(origin, rect.center()));
+        let step = 20.0 / self.zoom * if shift { 5.0 } else { 1.0 };
+        let moved = cur + Vec2::new(dx, dy) * step;
+        self.kb_cursor = Some(moved);
+        if let Some(start) = self.kb_tronson {
+            self.drag = Drag::Draw { start, end: moved };
+        }
+        if enter {
+            if self.tool == Tool::Tronson {
+                match self.kb_tronson.take() {
+                    None => {
+                        let level = self.level(p).clone();
+                        let (sp, _) = self.snap(p, &level, moved, None);
+                        self.kb_tronson = Some(sp);
+                        self.drag = Drag::Draw { start: sp, end: sp };
+                    }
+                    Some(start) => {
+                        self.drag = Drag::None;
+                        let level = self.level(p).clone();
+                        let (end, _) = self.snap(p, &level, moved, None);
+                        self.finish_tronson(p, start, end);
                     }
                 }
-            } else if dx != 0.0 || dy != 0.0 {
-                let step = if shift { 160.0 } else { 40.0 };
-                self.pan -= Vec2::new(dx, dy) * step;
+            } else {
+                self.click_at(p, moved, thr);
             }
-            // Enter pe un subsistem: intră în el (ca dublu-click).
-            if enter {
-                let level = self.level(p).clone();
-                if self.active_sub.is_none() {
-                    if let Some(sub) = selected.as_ref().and_then(|id| level.iter().find(|e| &e.id == id && e.kind == SchemaKind::Subsistem)) {
-                        self.active_sub = Some(sub.id.clone());
-                        self.selected = None;
-                        self.fitted = false;
-                    }
+        }
+    }
+
+    /// Tastatura cu instrumentul de selecție: săgețile mută elementul ales (sau vederea),
+    /// Enter intră într-un subsistem.
+    fn kb_select(&mut self, p: &mut ProjectData, dir: Vec2, shift: bool, alt: bool, enter: bool) {
+        let (dx, dy) = (dir.x, dir.y);
+        self.kb_cursor = None;
+        let selected = self.selected.clone();
+        if (dx != 0.0 || dy != 0.0) && !alt && selected.is_some() {
+            // Element ales: săgețile îl mută (Shift = pas mare); cu Alt se deplasează vederea.
+            let step = if shift { 50.0 } else { 10.0 };
+            if self.kb_move_id != selected {
+                self.checkpoint(p);
+                self.kb_move_id = selected.clone();
+            }
+            if let Some(e) = self.level(p).iter_mut().find(|e| Some(&e.id) == selected.as_ref()) {
+                e.x += (dx * step) as f64;
+                e.y += (dy * step) as f64;
+                if let (Some(x2), Some(y2)) = (e.x2, e.y2) {
+                    e.x2 = Some(x2 + (dx * step) as f64);
+                    e.y2 = Some(y2 + (dy * step) as f64);
+                }
+            }
+        } else if dx != 0.0 || dy != 0.0 {
+            let step = if shift { 160.0 } else { 40.0 };
+            self.pan -= Vec2::new(dx, dy) * step;
+        }
+        // Enter pe un subsistem: intră în el (ca dublu-click).
+        if enter {
+            let level = self.level(p).clone();
+            if self.active_sub.is_none() {
+                if let Some(sub) = selected.as_ref().and_then(|id| level.iter().find(|e| &e.id == id && e.kind == SchemaKind::Subsistem)) {
+                    self.active_sub = Some(sub.id.clone());
+                    self.selected = None;
+                    self.fitted = false;
                 }
             }
         }
@@ -759,15 +758,7 @@ impl CanvasUi {
             Tool::Text => {
                 self.checkpoint(p);
                 let id = uuid::Uuid::new_v4().to_string();
-                self.level(p).push(SchemaElement {
-                    id: id.clone(),
-                    kind: SchemaKind::Text,
-                    x: wp.x as f64,
-                    y: wp.y as f64,
-                    text: Some("Text".into()),
-                    font_size: Some(14.0),
-                    ..Default::default()
-                });
+                self.level(p).push(SchemaElement { id: id.clone(), kind: SchemaKind::Text, x: wp.x as f64, y: wp.y as f64, text: Some("Text".into()), font_size: Some(14.0), ..Default::default() });
                 self.selected = Some(id);
                 self.tool = Tool::Select;
             }
@@ -779,10 +770,7 @@ impl CanvasUi {
                 self.checkpoint(p);
                 let id = uuid::Uuid::new_v4().to_string();
                 let label = next_label(SchemaKind::Subsistem, &p.network_schema);
-                let ports = vec![
-                    json!({"id": uuid::Uuid::new_v4().to_string(), "side": "L"}),
-                    json!({"id": uuid::Uuid::new_v4().to_string(), "side": "R"}),
-                ];
+                let ports = vec![json!({"id": uuid::Uuid::new_v4().to_string(), "side": "L"}), json!({"id": uuid::Uuid::new_v4().to_string(), "side": "R"})];
                 p.network_schema.push(SchemaElement {
                     id: id.clone(),
                     kind: SchemaKind::Subsistem,
@@ -923,6 +911,7 @@ impl CanvasUi {
     }
 
     fn breadcrumb(&mut self, ui: &mut Ui, t: &I18n, p: &ProjectData) {
+        let cl = Colors::new(ui.visuals().dark_mode);
         let Some(id) = &self.active_sub else { return };
         let label = p.network_schema.iter().find(|e| &e.id == id).and_then(|e| e.label.clone()).unwrap_or_default();
         let pl = pal(ui);
@@ -930,7 +919,7 @@ impl CanvasUi {
             if ui.link(t.t("step8.mainSchema")).clicked() {
                 self.leave_sub();
             }
-            ui.label(RichText::new(format!("›  {label}")).strong().color(c_sub_text()));
+            ui.label(RichText::new(format!("›  {label}")).strong().color(cl.sub_text));
             ui.label(RichText::new(t.t("canvas.subsistemHint")).size(11.0).color(pl.muted));
         });
     }
@@ -974,13 +963,8 @@ impl CanvasUi {
         }
         // Tastatură (doar când canvas-ul e sub cursor sau are focus).
         if resp.hovered() || resp.has_focus() {
-            let (del, esc, undo) = ui.input(|i| {
-                (
-                    i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace),
-                    i.key_pressed(egui::Key::Escape),
-                    i.modifiers.command && i.key_pressed(egui::Key::Z),
-                )
-            });
+            let (del, esc, undo) =
+                ui.input(|i| (i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace), i.key_pressed(egui::Key::Escape), i.modifiers.command && i.key_pressed(egui::Key::Z)));
             let typing = ui.memory(|m| m.focused().is_some()) && !resp.has_focus();
             if del && !typing {
                 self.delete_selected(p);
@@ -1000,9 +984,7 @@ impl CanvasUi {
         // Tastatura, cu focus pe desen (accesibilitate): fără mouse se pot alege, muta și desena elemente.
         if resp.has_focus() {
             // Săgețile rămân la desen (nu mută focusul între widgeturi).
-            ui.memory_mut(|m| {
-                m.set_focus_lock_filter(resp.id, egui::EventFilter { horizontal_arrows: true, vertical_arrows: true, ..Default::default() })
-            });
+            ui.memory_mut(|m| m.set_focus_lock_filter(resp.id, egui::EventFilter { horizontal_arrows: true, vertical_arrows: true, ..Default::default() }));
             self.keyboard(ui, rect, p);
         }
 
@@ -1031,127 +1013,132 @@ impl CanvasUi {
         }
 
         if resp.drag_started() {
-            let Some(start) = ui.input(|i| i.pointer.press_origin()) else { return };
-            let wp = self.to_world(origin, start);
-            let level = self.level(p).clone();
-            let middle = ui.input(|i| i.pointer.middle_down() || i.pointer.secondary_down());
-            self.drag = if middle {
-                Drag::Pan
-            } else {
-                match self.tool {
-                    Tool::Tronson => {
-                        let (sp, _) = self.snap(p, &level, wp, None);
-                        Drag::Draw { start: sp, end: sp }
-                    }
-                    Tool::Select if self
-                        .selected
-                        .as_ref()
-                        .and_then(|id| level.iter().find(|e| &e.id == id))
-                        .and_then(|e| resize_handle(e, vs))
-                        .is_some_and(|h| h.distance(wp) < thr * 1.5) =>
-                    {
-                        self.pending_undo = Some(p.network_schema.clone());
-                        Drag::Resize { id: self.selected.clone().unwrap_or_default() }
-                    }
-                    Tool::Select => {
-                        let label_hit = level
-                            .iter()
-                            .rev()
-                            .find(|e| hit_test(e, wp, thr).is_none() && label_pos(e, vs).is_some_and(|lp| lp.distance(wp) < thr * 2.5));
-                        if let Some(e) = label_hit {
-                            self.selected = Some(e.id.clone());
-                            self.pending_undo = Some(p.network_schema.clone());
-                            Drag::Label { id: e.id.clone(), last: wp }
-                        } else if let Some((e, hit)) = level.iter().rev().find_map(|e| hit_test(e, wp, thr).map(|h| (e, h))) {
-                            self.selected = Some(e.id.clone());
-                            self.pending_undo = Some(p.network_schema.clone());
-                            Drag::Move { id: e.id.clone(), hit, last: wp }
-                        } else {
-                            self.selected = None;
-                            Drag::Pan
-                        }
-                    }
-                    _ => Drag::Pan,
-                }
-            };
+            self.drag_start(ui, p, origin, thr, vs);
         }
-
         if resp.dragged() {
             let cur = resp.interact_pointer_pos().map(|s| self.to_world(origin, s));
-            match self.drag.clone() {
-                Drag::Pan => self.pan += resp.drag_delta(),
-                Drag::Draw { start, .. } => {
-                    if let Some(c) = cur {
-                        let level = self.level(p).clone();
-                        let (sp, _) = self.snap(p, &level, c, None);
-                        self.drag = Drag::Draw { start, end: sp };
-                    }
-                }
-                Drag::Label { id, last } => {
-                    if let Some(c) = cur {
-                        if let Some(e) = self.level(p).iter_mut().find(|e| e.id == id) {
-                            e.label_offset_x = Some(e.label_offset_x.unwrap_or(0.0) + (c.x - last.x) as f64);
-                            e.label_offset_y = Some(e.label_offset_y.unwrap_or(0.0) + (c.y - last.y) as f64);
-                        }
-                        self.drag = Drag::Label { id, last: c };
-                    }
-                }
-                Drag::Move { id, hit, last } => {
-                    if let Some(c) = cur {
-                        let level = self.level(p).clone();
-                        if hit == Hit::Body {
-                            let d = c - last;
-                            if let Some(e) = self.level(p).iter_mut().find(|e| e.id == id) {
-                                e.x += d.x as f64;
-                                e.y += d.y as f64;
-                                if let (Some(x2), Some(y2)) = (e.x2, e.y2) {
-                                    e.x2 = Some(x2 + d.x as f64);
-                                    e.y2 = Some(y2 + d.y as f64);
-                                }
-                            }
-                        } else {
-                            let (sp, _) = self.snap(p, &level, c, Some(&id));
-                            if let Some(e) = self.level(p).iter_mut().find(|e| e.id == id) {
-                                if hit == Hit::Start {
-                                    e.x = sp.x as f64;
-                                    e.y = sp.y as f64;
-                                } else {
-                                    e.x2 = Some(sp.x as f64);
-                                    e.y2 = Some(sp.y as f64);
-                                }
-                            }
-                        }
-                        self.drag = Drag::Move { id, hit, last: c };
-                    }
-                }
-                Drag::Resize { id } => {
-                    if let Some(c) = cur {
-                        if let Some(e) = self.level(p).iter_mut().find(|e| e.id == id) {
-                            apply_resize(e, c, vs);
-                        }
-                    }
-                }
-                Drag::None => {}
-            }
+            self.drag_update(p, cur, resp.drag_delta(), vs);
         }
-
         if resp.drag_stopped() {
-            if let Drag::Draw { start, end } = std::mem::replace(&mut self.drag, Drag::None) {
-                self.finish_tronson(p, start, end);
+            self.drag_end(p);
+        }
+    }
+
+    /// Începutul unei trageri: ce se trage depinde de instrument și de ce e sub cursor.
+    fn drag_start(&mut self, ui: &Ui, p: &mut ProjectData, origin: Pos2, thr: f32, vs: f32) {
+        let Some(start) = ui.input(|i| i.pointer.press_origin()) else { return };
+        let wp = self.to_world(origin, start);
+        let level = self.level(p).clone();
+        let middle = ui.input(|i| i.pointer.middle_down() || i.pointer.secondary_down());
+        self.drag = if middle {
+            Drag::Pan
+        } else {
+            match self.tool {
+                Tool::Tronson => {
+                    let (sp, _) = self.snap(p, &level, wp, None);
+                    Drag::Draw { start: sp, end: sp }
+                }
+                Tool::Select if self.selected.as_ref().and_then(|id| level.iter().find(|e| &e.id == id)).and_then(|e| resize_handle(e, vs)).is_some_and(|h| h.distance(wp) < thr * 1.5) => {
+                    self.pending_undo = Some(p.network_schema.clone());
+                    Drag::Resize { id: self.selected.clone().unwrap_or_default() }
+                }
+                Tool::Select => {
+                    let label_hit = level.iter().rev().find(|e| hit_test(e, wp, thr).is_none() && label_pos(e, vs).is_some_and(|lp| lp.distance(wp) < thr * 2.5));
+                    if let Some(e) = label_hit {
+                        self.selected = Some(e.id.clone());
+                        self.pending_undo = Some(p.network_schema.clone());
+                        Drag::Label { id: e.id.clone(), last: wp }
+                    } else if let Some((e, hit)) = level.iter().rev().find_map(|e| hit_test(e, wp, thr).map(|h| (e, h))) {
+                        self.selected = Some(e.id.clone());
+                        self.pending_undo = Some(p.network_schema.clone());
+                        Drag::Move { id: e.id.clone(), hit, last: wp }
+                    } else {
+                        self.selected = None;
+                        Drag::Pan
+                    }
+                }
+                _ => Drag::Pan,
             }
-            if let Some(before) = self.pending_undo.take() {
-                if before != p.network_schema {
-                    self.undo.push(before);
+        };
+    }
+
+    /// O tragere în curs: `cur` = poziția cursorului în schemă, `delta` = deplasarea pe ecran.
+    fn drag_update(&mut self, p: &mut ProjectData, cur: Option<Pos2>, delta: Vec2, vs: f32) {
+        match self.drag.clone() {
+            Drag::Pan => self.pan += delta,
+            Drag::Draw { start, .. } => {
+                if let Some(c) = cur {
+                    let level = self.level(p).clone();
+                    let (sp, _) = self.snap(p, &level, c, None);
+                    self.drag = Drag::Draw { start, end: sp };
                 }
             }
-            self.drag = Drag::None;
+            Drag::Label { id, last } => {
+                if let Some(c) = cur {
+                    if let Some(e) = self.level(p).iter_mut().find(|e| e.id == id) {
+                        e.label_offset_x = Some(e.label_offset_x.unwrap_or(0.0) + (c.x - last.x) as f64);
+                        e.label_offset_y = Some(e.label_offset_y.unwrap_or(0.0) + (c.y - last.y) as f64);
+                    }
+                    self.drag = Drag::Label { id, last: c };
+                }
+            }
+            Drag::Move { id, hit, last } => {
+                if let Some(c) = cur {
+                    let level = self.level(p).clone();
+                    if hit == Hit::Body {
+                        let d = c - last;
+                        if let Some(e) = self.level(p).iter_mut().find(|e| e.id == id) {
+                            e.x += d.x as f64;
+                            e.y += d.y as f64;
+                            if let (Some(x2), Some(y2)) = (e.x2, e.y2) {
+                                e.x2 = Some(x2 + d.x as f64);
+                                e.y2 = Some(y2 + d.y as f64);
+                            }
+                        }
+                    } else {
+                        let (sp, _) = self.snap(p, &level, c, Some(&id));
+                        if let Some(e) = self.level(p).iter_mut().find(|e| e.id == id) {
+                            if hit == Hit::Start {
+                                e.x = sp.x as f64;
+                                e.y = sp.y as f64;
+                            } else {
+                                e.x2 = Some(sp.x as f64);
+                                e.y2 = Some(sp.y as f64);
+                            }
+                        }
+                    }
+                    self.drag = Drag::Move { id, hit, last: c };
+                }
+            }
+            Drag::Resize { id } => {
+                if let Some(c) = cur {
+                    if let Some(e) = self.level(p).iter_mut().find(|e| e.id == id) {
+                        apply_resize(e, c, vs);
+                    }
+                }
+            }
+            Drag::None => {}
         }
+    }
+
+    /// Sfârșitul tragerii: tronsonul desenat se adaugă, iar modificarea intră în istoric.
+    fn drag_end(&mut self, p: &mut ProjectData) {
+        if let Drag::Draw { start, end } = std::mem::replace(&mut self.drag, Drag::None) {
+            self.finish_tronson(p, start, end);
+        }
+        if let Some(before) = self.pending_undo.take() {
+            if before != p.network_schema {
+                self.undo.push(before);
+            }
+        }
+        self.drag = Drag::None;
     }
 
     fn paint(&mut self, ui: &mut Ui, rect: Rect, p: &mut ProjectData, resp: &egui::Response) {
         let painter = ui.painter_at(rect);
-        DARK.with(|d| d.set(ui.visuals().dark_mode && !self.capturing));
-        painter.rect_filled(rect, CornerRadius::same(10), c_bg());
+        // Captura PNG se face mereu în tema luminoasă.
+        let cl = Colors::new(ui.visuals().dark_mode && !self.capturing);
+        painter.rect_filled(rect, CornerRadius::same(10), cl.bg);
         let origin = rect.min;
         let view = crate::map_ui::View { origin, pan: self.pan, zoom: self.zoom };
         if let (Some(a), Some(tiles)) = (crate::map_ui::anchor(p), self.tiles.as_mut()) {
@@ -1164,22 +1151,9 @@ impl CanvasUi {
         let vs = self.vs();
         let sc = vs * z; // dimensiune lume → ecran pentru simboluri
 
-        // Grilă
         if setting_bool(p, "gridVisible", false) {
             let step = (setting_f64(p, "gridSpacing", 10.0) / mpp) as f32 * z;
-            if step >= 6.0 {
-                let o = origin + self.pan;
-                let mut x = rect.left() + (o.x - rect.left()).rem_euclid(step);
-                while x < rect.right() {
-                    painter.line_segment([Pos2::new(x, rect.top()), Pos2::new(x, rect.bottom())], Stroke::new(1.0, c_grid()));
-                    x += step;
-                }
-                let mut y = rect.top() + (o.y - rect.top()).rem_euclid(step);
-                while y < rect.bottom() {
-                    painter.line_segment([Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)], Stroke::new(1.0, c_grid()));
-                    y += step;
-                }
-            }
+            draw_grid(&painter, rect, origin + self.pan, step, cl.grid);
         }
 
         if self.active_sub.is_none() {
@@ -1195,103 +1169,31 @@ impl CanvasUi {
 
         for el in &level {
             let sel = self.selected.as_deref() == Some(el.id.as_str());
-            let (x, y) = (el.x as f32, el.y as f32);
-            let off = Vec2::new(el.label_offset_x.unwrap_or(0.0) as f32, el.label_offset_y.unwrap_or(0.0) as f32);
-            match el.kind {
-                SchemaKind::Tronson => {
-                    let base = parse_color(el.color.as_deref()).unwrap_or(c_tronson());
-                    let q = schema::section_for(el, &p.network_sections).map(|s| s.q_c);
-                    draw_tronson(&painter, el, sp, sc, vs, z, mpp, if sel { c_selected() } else { base }, sel, q, off);
-                }
-                SchemaKind::Rezervor | SchemaKind::Sursa => {
-                    let color = if sel { c_selected() } else if el.kind == SchemaKind::Rezervor { c_red() } else { c_tronson() };
-                    let (w, h) = (el.w.map_or(BOX_W, |v| v as f32) * vs, el.h.map_or(BOX_H, |v| v as f32) * vs);
-                    let r = Rect::from_min_max(sp(Pos2::new(x - w / 2.0, y - h)), sp(Pos2::new(x + w / 2.0, y)));
-                    painter.rect_filled(r, 0.0, c_bg());
-                    painter.rect_stroke(r, 0.0, Stroke::new(2.0 * sc, color), egui::StrokeKind::Middle);
-                    let letter = if el.kind == SchemaKind::Rezervor { "R" } else { "S" };
-                    painter.text(r.center(), Align2::CENTER_CENTER, letter, FontId::proportional((h * 0.55 * z).max(4.0)), c_tronson());
-                    painter.circle_filled(sp(Pos2::new(x + w / 2.0, y)), DOT_R * sc, color);
-                    if let Some(l) = &el.label {
-                        painter.text(sp(Pos2::new(x, y + DOT_R * vs + 3.0) + off), Align2::CENTER_TOP, l, FontId::proportional(13.0 * sc), color);
-                    }
-                }
-                SchemaKind::Hidrant | SchemaKind::CaminGrav | SchemaKind::CaminAer => {
-                    let base = match el.kind {
-                        SchemaKind::Hidrant => c_red(),
-                        SchemaKind::CaminGrav => c_camin_g(),
-                        _ => c_camin_a(),
-                    };
-                    let c = if sel { c_selected() } else { base };
-                    let r = el.r.map_or(CIRCLE_R, |v| v as f32) * vs;
-                    let center = sp(Pos2::new(x, y));
-                    painter.circle(center, r * z, c_bg(), Stroke::new(2.0 * sc, c));
-                    for d in [Vec2::new(-r, 0.0), Vec2::new(r, 0.0), Vec2::new(0.0, -r), Vec2::new(0.0, r)] {
-                        painter.circle_filled(center + d * z, 2.5 * sc, c);
-                    }
-                    if let Some(l) = &el.label {
-                        painter.text(sp(Pos2::new(x, y + r + 3.0) + off), Align2::CENTER_TOP, l, FontId::proportional(11.0 * sc), c);
-                    }
-                }
-                SchemaKind::Subsistem => {
-                    let (w, h) = (el.w.map_or(SUB_W, |v| v as f32), el.h.map_or(SUB_H, |v| v as f32));
-                    let r = Rect::from_min_max(sp(Pos2::new(x - w / 2.0, y - h / 2.0)), sp(Pos2::new(x + w / 2.0, y + h / 2.0)));
-                    let brd = if sel { c_selected() } else { c_sub_brd() };
-                    painter.rect(r, CornerRadius::same((8.0 * z).min(40.0) as u8), c_sub_fill(), Stroke::new(2.0 * sc, brd), egui::StrokeKind::Middle);
-                    if let Some(l) = &el.label {
-                        painter.text(sp(Pos2::new(x, y - h / 2.0 + 8.0) + off), Align2::CENTER_TOP, l, FontId::proportional(11.0 * sc), brd);
-                    }
-                    for (pp, left) in sub_ports(el) {
-                        let s = sp(pp);
-                        painter.rect_filled(Rect::from_center_size(s, Vec2::splat(5.0 * sc)), 0.0, brd);
-                        let dx = if left { -8.0 } else { 8.0 } * sc;
-                        painter.line_segment([s, s + Vec2::new(dx, 0.0)], Stroke::new(1.5 * sc, brd));
-                    }
-                    let n = el.children.as_ref().map_or(0, |c| c.iter().filter(|e| e.kind == SchemaKind::Tronson).count());
-                    let msg = if n > 0 { format!("{n} tronson{}", if n > 1 { "e" } else { "" }) } else { "dublu-click pt. a edita".into() };
-                    painter.text(sp(Pos2::new(x, y + 6.0)), Align2::CENTER_CENTER, msg, FontId::proportional(9.0 * sc), c_sub_text());
-                }
-                SchemaKind::Text => {
-                    if let Some(txt) = &el.text {
-                        let fs = el.font_size.unwrap_or(12.0) as f32 * sc;
-                        let c = if sel { c_selected() } else { parse_color(el.color.as_deref()).unwrap_or(c_tronson()) };
-                        let r = painter.text(sp(Pos2::new(x, y) + off), Align2::LEFT_TOP, txt, FontId::proportional(fs), c);
-                        if sel {
-                            painter.rect_stroke(r.expand(2.0), 0.0, Stroke::new(1.0, c_selected()), egui::StrokeKind::Outside);
-                        }
-                    }
-                }
-            }
+            let q = schema::section_for(el, &p.network_sections).map(|s| s.q_c);
+            draw_element(&painter, cl, el, sel, q, sp, sc, vs, z, mpp);
         }
 
         // Mânerul de redimensionare al elementului selectat
         if let Some(h) = self.selected.as_ref().and_then(|id| level.iter().find(|e| &e.id == id)).and_then(|e| resize_handle(e, vs)) {
             if !self.capturing {
                 let r = Rect::from_center_size(sp(h), Vec2::splat(9.0));
-                painter.rect(r, 0.0, c_bg(), Stroke::new(1.5, c_selected()), egui::StrokeKind::Middle);
+                painter.rect(r, 0.0, cl.bg, Stroke::new(1.5, cl.selected), egui::StrokeKind::Middle);
             }
         }
 
         // Previzualizarea tronsonului în desenare
         if let Drag::Draw { start, end } = &self.drag {
-            let preview = SchemaElement {
-                kind: SchemaKind::Tronson,
-                x: start.x as f64,
-                y: start.y as f64,
-                x2: Some(end.x as f64),
-                y2: Some(end.y as f64),
-                ..Default::default()
-            };
-            draw_tronson(&painter, &preview, sp, sc, vs, z, mpp, rgb(0x94A3B8), false, None, Vec2::ZERO);
+            let preview = SchemaElement { kind: SchemaKind::Tronson, x: start.x as f64, y: start.y as f64, x2: Some(end.x as f64), y2: Some(end.y as f64), ..Default::default() };
+            draw_tronson(&painter, cl, &preview, sp, sc, vs, z, mpp, rgb(0x94A3B8), false, None, Vec2::ZERO);
             let len = start.distance(*end) as f64 * mpp;
-            painter.text(sp(*end) + Vec2::new(10.0, -10.0), Align2::LEFT_BOTTOM, format_dist(len), FontId::proportional(12.0), c_snap());
+            painter.text(sp(*end) + Vec2::new(10.0, -10.0), Align2::LEFT_BOTTOM, format_dist(len), FontId::proportional(12.0), cl.snap);
         }
 
         // Cursorul de tastatură (doar cu focus pe desen și un instrument de desen ales)
         if resp.has_focus() && !self.capturing && self.tool != Tool::Select {
             if let Some(k) = self.kb_cursor {
                 let s = sp(k);
-                let col = c_snap();
+                let col = cl.snap;
                 painter.line_segment([s - Vec2::new(12.0, 0.0), s + Vec2::new(12.0, 0.0)], Stroke::new(1.5, col));
                 painter.line_segment([s - Vec2::new(0.0, 12.0), s + Vec2::new(0.0, 12.0)], Stroke::new(1.5, col));
                 painter.circle_stroke(s, 5.0, Stroke::new(1.5, col));
@@ -1305,7 +1207,7 @@ impl CanvasUi {
                 let exclude = if let Drag::Move { id, .. } = &self.drag { Some(id.as_str()) } else { None };
                 let (s, snapped) = self.snap(p, &level, wp, exclude);
                 if snapped {
-                    painter.circle_stroke(sp(s), 7.0, Stroke::new(2.0, c_snap()));
+                    painter.circle_stroke(sp(s), 7.0, Stroke::new(2.0, cl.snap));
                 }
             }
             let txt = format!("x {}   y {}", format_dist(wp.x as f64 * mpp), format_dist(wp.y as f64 * mpp));
@@ -1315,14 +1217,12 @@ impl CanvasUi {
     }
 
     fn properties(&mut self, ui: &mut Ui, t: &I18n, p: &mut ProjectData) {
+        let cl = Colors::new(ui.visuals().dark_mode);
         let Some(id) = self.selected.clone() else { return };
         let mpp = meters_per_px(scale_ratio(p));
         // Porturile implicite ale unui subsistem se completează fără intrare în istoric.
         if let Some(el) = self.level(p).iter_mut().find(|e| e.id == id && e.kind == SchemaKind::Subsistem && e.ports.is_none()) {
-            el.ports = Some(vec![
-                serde_json::json!({"id": format!("{}-L", el.id), "side": "L"}),
-                serde_json::json!({"id": format!("{}-R", el.id), "side": "R"}),
-            ]);
+            el.ports = Some(vec![serde_json::json!({"id": format!("{}-L", el.id), "side": "L"}), serde_json::json!({"id": format!("{}-R", el.id), "side": "R"})]);
         }
         let before = p.network_schema.clone();
         let mut delete = false;
@@ -1365,10 +1265,10 @@ impl CanvasUi {
                     }
                     if matches!(el.kind, SchemaKind::Tronson | SchemaKind::Text) {
                         for (hex, key) in COLOR_PRESETS {
-                            let c = parse_color(Some(hex)).unwrap_or(c_tronson());
+                            let c = parse_color(Some(hex), cl).unwrap_or(cl.tronson);
                             let cur = el.color.as_deref().unwrap_or("#1a1a1a") == *hex;
                             let (r, resp) = ui.allocate_exact_size(Vec2::splat(18.0), Sense::click());
-                            ui.painter().circle(r.center(), 7.0, c, Stroke::new(if cur { 2.5 } else { 1.0 }, if cur { c_selected() } else { Color32::WHITE }));
+                            ui.painter().circle(r.center(), 7.0, c, Stroke::new(if cur { 2.5 } else { 1.0 }, if cur { cl.selected } else { Color32::WHITE }));
                             if resp.on_hover_text(t.t(&format!("step8.{key}"))).clicked() {
                                 el.color = (*hex != "#1a1a1a").then(|| hex.to_string());
                             }
@@ -1401,12 +1301,7 @@ impl CanvasUi {
 
 /// Porturile unui subsistem: intrări (stânga) și ieșiri (dreapta), cu etichete.
 fn ports_editor(ui: &mut Ui, t: &I18n, el: &mut SchemaElement) {
-    let ports = el.ports.get_or_insert_with(|| {
-        vec![
-            serde_json::json!({"id": format!("{}-L", el.id), "side": "L"}),
-            serde_json::json!({"id": format!("{}-R", el.id), "side": "R"}),
-        ]
-    });
+    let ports = el.ports.get_or_insert_with(|| vec![serde_json::json!({"id": format!("{}-L", el.id), "side": "L"}), serde_json::json!({"id": format!("{}-R", el.id), "side": "R"})]);
     ui.end_row();
     ui.vertical(|ui| {
         ui.label(RichText::new(t.t("canvas.ports")).strong().size(12.0));
@@ -1466,20 +1361,104 @@ pub(crate) fn crop_rgba(img: &egui::ColorImage, r: Rect, ppp: f32) -> (Vec<u8>, 
     (rgba, w, h)
 }
 
+/// Grila de fundal: linii la fiecare `step` pixeli de ecran, aliniate la originea `o` a schemei.
+/// Sub 6 px grila ar fi prea deasă și nu se mai desenează.
+fn draw_grid(painter: &egui::Painter, rect: Rect, o: Pos2, step: f32, color: Color32) {
+    if step < 6.0 {
+        return;
+    }
+    let mut x = rect.left() + (o.x - rect.left()).rem_euclid(step);
+    while x < rect.right() {
+        painter.line_segment([Pos2::new(x, rect.top()), Pos2::new(x, rect.bottom())], Stroke::new(1.0, color));
+        x += step;
+    }
+    let mut y = rect.top() + (o.y - rect.top()).rem_euclid(step);
+    while y < rect.bottom() {
+        painter.line_segment([Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)], Stroke::new(1.0, color));
+        y += step;
+    }
+}
+
+/// Desenează un element al schemei. `sp` = lume → ecran; `sc` = mărimea simbolurilor pe ecran,
+/// `vs` = factorul lor de vizibilitate, `z` = zoom, `q` = debitul de calcul al tronsonului.
 #[allow(clippy::too_many_arguments)]
-fn draw_tronson(
-    painter: &egui::Painter,
-    el: &SchemaElement,
-    sp: impl Fn(Pos2) -> Pos2,
-    sc: f32,
-    vs: f32,
-    zoom: f32,
-    mpp: f64,
-    color: Color32,
-    selected: bool,
-    q: Option<f64>,
-    off: Vec2,
-) {
+fn draw_element(painter: &egui::Painter, cl: Colors, el: &SchemaElement, sel: bool, q: Option<f64>, sp: impl Fn(Pos2) -> Pos2 + Copy, sc: f32, vs: f32, z: f32, mpp: f64) {
+    let (x, y) = (el.x as f32, el.y as f32);
+    let off = Vec2::new(el.label_offset_x.unwrap_or(0.0) as f32, el.label_offset_y.unwrap_or(0.0) as f32);
+    match el.kind {
+        SchemaKind::Tronson => {
+            let base = parse_color(el.color.as_deref(), cl).unwrap_or(cl.tronson);
+            draw_tronson(painter, cl, el, sp, sc, vs, z, mpp, if sel { cl.selected } else { base }, sel, q, off);
+        }
+        SchemaKind::Rezervor | SchemaKind::Sursa => {
+            let color = if sel {
+                cl.selected
+            } else if el.kind == SchemaKind::Rezervor {
+                cl.red
+            } else {
+                cl.tronson
+            };
+            let (w, h) = (el.w.map_or(BOX_W, |v| v as f32) * vs, el.h.map_or(BOX_H, |v| v as f32) * vs);
+            let r = Rect::from_min_max(sp(Pos2::new(x - w / 2.0, y - h)), sp(Pos2::new(x + w / 2.0, y)));
+            painter.rect_filled(r, 0.0, cl.bg);
+            painter.rect_stroke(r, 0.0, Stroke::new(2.0 * sc, color), egui::StrokeKind::Middle);
+            let letter = if el.kind == SchemaKind::Rezervor { "R" } else { "S" };
+            painter.text(r.center(), Align2::CENTER_CENTER, letter, FontId::proportional((h * 0.55 * z).max(4.0)), cl.tronson);
+            painter.circle_filled(sp(Pos2::new(x + w / 2.0, y)), DOT_R * sc, color);
+            if let Some(l) = &el.label {
+                painter.text(sp(Pos2::new(x, y + DOT_R * vs + 3.0) + off), Align2::CENTER_TOP, l, FontId::proportional(13.0 * sc), color);
+            }
+        }
+        SchemaKind::Hidrant | SchemaKind::CaminGrav | SchemaKind::CaminAer => {
+            let base = match el.kind {
+                SchemaKind::Hidrant => cl.red,
+                SchemaKind::CaminGrav => cl.camin_g,
+                _ => cl.camin_a,
+            };
+            let c = if sel { cl.selected } else { base };
+            let r = el.r.map_or(CIRCLE_R, |v| v as f32) * vs;
+            let center = sp(Pos2::new(x, y));
+            painter.circle(center, r * z, cl.bg, Stroke::new(2.0 * sc, c));
+            for d in [Vec2::new(-r, 0.0), Vec2::new(r, 0.0), Vec2::new(0.0, -r), Vec2::new(0.0, r)] {
+                painter.circle_filled(center + d * z, 2.5 * sc, c);
+            }
+            if let Some(l) = &el.label {
+                painter.text(sp(Pos2::new(x, y + r + 3.0) + off), Align2::CENTER_TOP, l, FontId::proportional(11.0 * sc), c);
+            }
+        }
+        SchemaKind::Subsistem => {
+            let (w, h) = (el.w.map_or(SUB_W, |v| v as f32), el.h.map_or(SUB_H, |v| v as f32));
+            let r = Rect::from_min_max(sp(Pos2::new(x - w / 2.0, y - h / 2.0)), sp(Pos2::new(x + w / 2.0, y + h / 2.0)));
+            let brd = if sel { cl.selected } else { cl.sub_brd };
+            painter.rect(r, CornerRadius::same((8.0 * z).min(40.0) as u8), cl.sub_fill, Stroke::new(2.0 * sc, brd), egui::StrokeKind::Middle);
+            if let Some(l) = &el.label {
+                painter.text(sp(Pos2::new(x, y - h / 2.0 + 8.0) + off), Align2::CENTER_TOP, l, FontId::proportional(11.0 * sc), brd);
+            }
+            for (pp, left) in sub_ports(el) {
+                let s = sp(pp);
+                painter.rect_filled(Rect::from_center_size(s, Vec2::splat(5.0 * sc)), 0.0, brd);
+                let dx = if left { -8.0 } else { 8.0 } * sc;
+                painter.line_segment([s, s + Vec2::new(dx, 0.0)], Stroke::new(1.5 * sc, brd));
+            }
+            let n = el.children.as_ref().map_or(0, |c| c.iter().filter(|e| e.kind == SchemaKind::Tronson).count());
+            let msg = if n > 0 { format!("{n} tronson{}", if n > 1 { "e" } else { "" }) } else { "dublu-click pt. a edita".into() };
+            painter.text(sp(Pos2::new(x, y + 6.0)), Align2::CENTER_CENTER, msg, FontId::proportional(9.0 * sc), cl.sub_text);
+        }
+        SchemaKind::Text => {
+            if let Some(txt) = &el.text {
+                let fs = el.font_size.unwrap_or(12.0) as f32 * sc;
+                let c = if sel { cl.selected } else { parse_color(el.color.as_deref(), cl).unwrap_or(cl.tronson) };
+                let r = painter.text(sp(Pos2::new(x, y) + off), Align2::LEFT_TOP, txt, FontId::proportional(fs), c);
+                if sel {
+                    painter.rect_stroke(r.expand(2.0), 0.0, Stroke::new(1.0, cl.selected), egui::StrokeKind::Outside);
+                }
+            }
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn draw_tronson(painter: &egui::Painter, cl: Colors, el: &SchemaElement, sp: impl Fn(Pos2) -> Pos2, sc: f32, vs: f32, zoom: f32, mpp: f64, color: Color32, selected: bool, q: Option<f64>, off: Vec2) {
     let a = Pos2::new(el.x as f32, el.y as f32);
     let (ex, ey) = end_of(el);
     let b = Pos2::new(ex, ey);
@@ -1508,16 +1487,34 @@ fn draw_tronson(
         let name_pos = sp(wmid + perp * step + off);
         let dim_pos = sp(wmid - perp * step + off);
         let shown = el.override_length.unwrap_or(len as f64 * mpp);
-        let name_color = if selected { c_selected() } else { parse_color(el.color.as_deref()).unwrap_or(c_tr_label()) };
+        let name_color = if selected { cl.selected } else { parse_color(el.color.as_deref(), cl).unwrap_or(cl.tr_label) };
         // Textul e orizontal: pe tronsoane verticale îl aliniem dinspre linie spre exterior.
-        let side = |v: f32| if perp.x.abs() > 0.7 { if v < 0.0 { Align2::RIGHT_CENTER } else { Align2::LEFT_CENTER } } else { Align2::CENTER_CENTER };
+        let side = |v: f32| {
+            if perp.x.abs() > 0.7 {
+                if v < 0.0 {
+                    Align2::RIGHT_CENTER
+                } else {
+                    Align2::LEFT_CENTER
+                }
+            } else {
+                Align2::CENTER_CENTER
+            }
+        };
         painter.text(name_pos, side(perp.x), label, FontId::proportional(13.0 * sc), name_color);
-        painter.text(dim_pos, side(-perp.x), format_dist(shown), FontId::proportional(12.0 * sc), if selected { c_selected() } else { c_tronson() });
+        painter.text(dim_pos, side(-perp.x), format_dist(shown), FontId::proportional(12.0 * sc), if selected { cl.selected } else { cl.tronson });
         if let Some(q) = q.filter(|q| *q > 0.0) {
             // Pe tronsoanele aproape verticale, Q stă sub nume (textul e orizontal).
             let q_pos = if perp.x.abs() > 0.7 { name_pos + Vec2::new(0.0, 14.0 * sc) } else { sp(wmid + perp * step * 2.0 + off) };
-            let align = if perp.x.abs() > 0.7 { if perp.x < 0.0 { Align2::RIGHT_CENTER } else { Align2::LEFT_CENTER } } else { Align2::CENTER_CENTER };
-            painter.text(q_pos, align, format!("Q={q:.2} l/s"), FontId::proportional(11.0 * sc), c_q());
+            let align = if perp.x.abs() > 0.7 {
+                if perp.x < 0.0 {
+                    Align2::RIGHT_CENTER
+                } else {
+                    Align2::LEFT_CENTER
+                }
+            } else {
+                Align2::CENTER_CENTER
+            };
+            painter.text(q_pos, align, format!("Q={q:.2} l/s"), FontId::proportional(11.0 * sc), cl.q);
         }
     }
     let _ = zoom;

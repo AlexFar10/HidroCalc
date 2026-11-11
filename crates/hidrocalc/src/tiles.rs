@@ -15,6 +15,10 @@ pub type TileKey = (u8, u32, u32);
 const MAX_TEXTURES: usize = 400;
 const ERROR_RETRY: Duration = Duration::from_secs(15);
 const WORKERS: usize = 4;
+/// Peste această mărime, cache-ul de pe disc se curăță la pornire…
+const DISK_MAX_BYTES: u64 = 500 * 1024 * 1024;
+/// …ștergând dalele cele mai vechi până sub acest prag.
+const DISK_KEEP_BYTES: u64 = 350 * 1024 * 1024;
 pub const USER_AGENT: &str = concat!("HidroCalc/", env!("CARGO_PKG_VERSION"), " (desktop app)");
 
 enum Entry {
@@ -64,8 +68,53 @@ fn load(key: TileKey, agent: &ureq::Agent) -> Result<ColorImage, String> {
     Ok(ColorImage::from_rgba_unmultiplied([img.width() as usize, img.height() as usize], img.as_raw()))
 }
 
+/// Fișierele din cache (recursiv), cu mărimea și data ultimei modificări.
+fn disk_files(dir: &std::path::Path, out: &mut Vec<(PathBuf, u64, std::time::SystemTime)>) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for e in entries.flatten() {
+        let Ok(meta) = e.metadata() else { continue };
+        if meta.is_dir() {
+            disk_files(&e.path(), out);
+        } else {
+            out.push((e.path(), meta.len(), meta.modified().unwrap_or(std::time::UNIX_EPOCH)));
+        }
+    }
+}
+
+/// Ține cache-ul de dale de pe disc sub o limită: peste `max`, șterge dalele cele mai vechi
+/// până sub `keep`. Întoarce numărul de fișiere șterse.
+fn prune_disk_cache(dir: &std::path::Path, max: u64, keep: u64) -> usize {
+    let mut files = Vec::new();
+    disk_files(dir, &mut files);
+    let mut total: u64 = files.iter().map(|f| f.1).sum();
+    if total <= max {
+        return 0;
+    }
+    files.sort_by_key(|f| f.2);
+    let mut removed = 0;
+    for (path, size, _) in files {
+        if total <= keep {
+            break;
+        }
+        if std::fs::remove_file(&path).is_ok() {
+            total -= size;
+            removed += 1;
+        }
+    }
+    removed
+}
+
 impl TileCache {
     pub fn new(ctx: &egui::Context) -> Self {
+        // Curățarea cache-ului de pe disc, o dată la pornire, pe un fir separat.
+        if let Some(dir) = disk_dir() {
+            std::thread::spawn(move || {
+                let n = prune_disk_cache(&dir, DISK_MAX_BYTES, DISK_KEEP_BYTES);
+                if n > 0 {
+                    log::info!("cache dale OSM: {n} fișiere vechi șterse");
+                }
+            });
+        }
         let (req_tx, req_rx) = channel::<TileKey>();
         let (res_tx, res_rx) = channel();
         let req_rx = Arc::new(Mutex::new(req_rx));
@@ -116,8 +165,7 @@ impl TileCache {
             self.entries.insert(key, entry);
         }
         if self.entries.len() > MAX_TEXTURES {
-            let mut ready: Vec<(TileKey, u64)> =
-                self.entries.iter().filter_map(|(k, e)| if let Entry::Ready(_, t) = e { Some((*k, *t)) } else { None }).collect();
+            let mut ready: Vec<(TileKey, u64)> = self.entries.iter().filter_map(|(k, e)| if let Entry::Ready(_, t) = e { Some((*k, *t)) } else { None }).collect();
             ready.sort_by_key(|(_, t)| *t);
             for (k, _) in ready.into_iter().take(self.entries.len() - MAX_TEXTURES) {
                 self.entries.remove(&k);
@@ -152,5 +200,27 @@ impl TileCache {
             Some(Entry::Ready(tex, _)) => Some(tex.id()),
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn disk_cache_is_pruned_oldest_first_down_to_the_keep_size() {
+        let dir = std::env::temp_dir().join(format!("hidrocalc-tiles-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(dir.join("14/1")).unwrap();
+        for i in 0..5u64 {
+            let p = dir.join(format!("14/1/{i}.png"));
+            std::fs::write(&p, vec![0u8; 100]).unwrap();
+            let t = std::time::UNIX_EPOCH + Duration::from_secs(1_000_000 + i * 60);
+            std::fs::File::options().write(true).open(&p).unwrap().set_modified(t).unwrap();
+        }
+        assert_eq!(prune_disk_cache(&dir, 1000, 300), 0, "sub limită nu se șterge nimic");
+        assert_eq!(prune_disk_cache(&dir, 400, 300), 2);
+        assert!(!dir.join("14/1/0.png").exists() && !dir.join("14/1/1.png").exists(), "cele mai vechi dispar primele");
+        assert!(dir.join("14/1/4.png").exists());
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

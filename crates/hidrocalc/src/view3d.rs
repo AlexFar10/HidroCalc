@@ -16,7 +16,6 @@ use hidro_core::scene3d::{self, Scene, TerrainGrid, Vec3};
 use serde_json::{json, Value};
 use std::sync::mpsc::{channel, Receiver};
 
-
 pub struct View3D {
     yaw: f32,
     pitch: f32,
@@ -34,18 +33,7 @@ pub struct View3D {
 
 impl Default for View3D {
     fn default() -> Self {
-        Self {
-            yaw: -0.6,
-            pitch: 0.55,
-            zoom: 1.0,
-            target: [0.0; 3],
-            labels: true,
-            grid_rx: None,
-            grid_error: None,
-            last_rect: Rect::NOTHING,
-            png_rx: None,
-            png_ready: None,
-        }
+        Self { yaw: -0.6, pitch: 0.55, zoom: 1.0, target: [0.0; 3], labels: true, grid_rx: None, grid_error: None, last_rect: Rect::NOTHING, png_rx: None, png_ready: None }
     }
 }
 
@@ -115,7 +103,11 @@ pub(crate) fn model_groups(scene: &Scene) -> Vec<(String, crate::mesh3d::Scene3)
         }
         let color = |k: usize| {
             let f = ((tr.heights[k] - tr.min_h) as f32 / range).clamp(0.0, 1.0);
-            if f < 0.5 { lerp(low, mid, f * 2.0) } else { lerp(mid, high, (f - 0.5) * 2.0) }
+            if f < 0.5 {
+                lerp(low, mid, f * 2.0)
+            } else {
+                lerp(mid, high, (f - 0.5) * 2.0)
+            }
         };
         for t in tris {
             let v = t.map(|k| Vert { p: pos[k], n: m3::norm(normals[k]), c: color(k) });
@@ -630,7 +622,8 @@ impl View3D {
         let o = rect.right_bottom() + Vec2::new(-48.0, -48.0);
         painter.circle_filled(o, 36.0, if dark { Color32::from_black_alpha(90) } else { Color32::from_white_alpha(150) });
         let dir = |v: [f32; 3]| Vec2::new(dot(v, cam.right), -dot(v, cam.up)) * 26.0;
-        let mut axes = [([1.0, 0.0, 0.0], Color32::from_rgb(0xEF, 0x44, 0x44), "E"), ([0.0, 1.0, 0.0], Color32::from_rgb(0x22, 0xC5, 0x5E), "↑"), ([0.0, 0.0, -1.0], Color32::from_rgb(0x3B, 0x82, 0xF6), "N")];
+        let mut axes =
+            [([1.0, 0.0, 0.0], Color32::from_rgb(0xEF, 0x44, 0x44), "E"), ([0.0, 1.0, 0.0], Color32::from_rgb(0x22, 0xC5, 0x5E), "↑"), ([0.0, 0.0, -1.0], Color32::from_rgb(0x3B, 0x82, 0xF6), "N")];
         axes.sort_by(|a, b| dot(a.0, cam.fwd).total_cmp(&dot(b.0, cam.fwd)).reverse());
         for (v, c, txt) in axes {
             let e = o + dir(v);

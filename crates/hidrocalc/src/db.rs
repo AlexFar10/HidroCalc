@@ -85,20 +85,9 @@ impl Db {
     /// Copiază rândurile din baza aplicației Tauri (deschisă doar pentru citire).
     pub fn import_legacy(&self, legacy: &Path) -> Result<usize, String> {
         let old = Connection::open_with_flags(legacy, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(|e| e.to_string())?;
-        let mut stmt = old
-            .prepare("SELECT id, name, locality, created_at, updated_at, data FROM projects")
-            .map_err(|e| e.to_string())?;
+        let mut stmt = old.prepare("SELECT id, name, locality, created_at, updated_at, data FROM projects").map_err(|e| e.to_string())?;
         let rows = stmt
-            .query_map([], |r| {
-                Ok((
-                    r.get::<_, String>(0)?,
-                    r.get::<_, String>(1)?,
-                    r.get::<_, String>(2)?,
-                    r.get::<_, String>(3)?,
-                    r.get::<_, String>(4)?,
-                    r.get::<_, String>(5)?,
-                ))
-            })
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?, r.get::<_, String>(3)?, r.get::<_, String>(4)?, r.get::<_, String>(5)?)))
             .map_err(|e| e.to_string())?;
         let mut n = 0;
         for row in rows {
@@ -116,15 +105,8 @@ impl Db {
     }
 
     pub fn list(&self) -> Result<Vec<IndexEntry>, String> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT id, name, locality, updated_at FROM projects ORDER BY updated_at DESC")
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map([], |r| {
-                Ok(IndexEntry { id: r.get(0)?, name: r.get(1)?, locality: r.get(2)?, updated_at: r.get(3)? })
-            })
-            .map_err(|e| e.to_string())?;
+        let mut stmt = self.conn.prepare("SELECT id, name, locality, updated_at FROM projects ORDER BY updated_at DESC").map_err(|e| e.to_string())?;
+        let rows = stmt.query_map([], |r| Ok(IndexEntry { id: r.get(0)?, name: r.get(1)?, locality: r.get(2)?, updated_at: r.get(3)? })).map_err(|e| e.to_string())?;
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
     }
 
@@ -135,8 +117,7 @@ impl Db {
             .map(Some)
             .or_else(|e| if e == rusqlite::Error::QueryReturnedNoRows { Ok(None) } else { Err(e) })
             .map_err(|e| e.to_string())?;
-        data.map(|d| serde_json::from_str(&d).map_err(|e| format!("Date corupte pentru proiectul {id}: {e}")))
-            .transpose()
+        data.map(|d| serde_json::from_str(&d).map_err(|e| format!("Date corupte pentru proiectul {id}: {e}"))).transpose()
     }
 
     pub fn save(&self, p: &ProjectData) -> Result<(), String> {
@@ -192,8 +173,7 @@ mod tests {
         let Some(path) = legacy_db_path().filter(|p| p.exists()) else { return };
         let old = Connection::open_with_flags(&path, OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
         let mut stmt = old.prepare("SELECT id, data FROM projects").unwrap();
-        let rows: Vec<(String, String)> =
-            stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).unwrap().map(Result::unwrap).collect();
+        let rows: Vec<(String, String)> = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).unwrap().map(Result::unwrap).collect();
         for (id, data) in &rows {
             let orig: serde_json::Value = serde_json::from_str(data).unwrap();
             let p: ProjectData = serde_json::from_value(orig.clone()).unwrap_or_else(|e| panic!("{id}: {e}"));

@@ -49,7 +49,6 @@ pub struct Quantities {
     pub trench: Trench,
 }
 
-
 pub fn build(p: &ProjectData, secs: &[NetworkSection], reservoir: Option<&ReservoirResults>, t: Tr) -> Quantities {
     let depth = pipe_depth(p);
     let mut pipes: Vec<PipeGroup> = Vec::new();
@@ -107,8 +106,7 @@ pub fn build(p: &ProjectData, secs: &[NetworkSection], reservoir: Option<&Reserv
     let c_eq = t("export.qty.catEquipment", &[]);
     let c_test = t("export.qty.catTests", &[]);
     let fmt2 = |v: f64| format!("{v}");
-    push(&c_ter, t("export.qty.trenchExcavation", &[]), "m³", trench.sapatura,
-        t("export.qty.trenchNote", &[("b", &fmt2(trench.latime_medie)), ("h", &fmt2(trench.adancime_medie))]));
+    push(&c_ter, t("export.qty.trenchExcavation", &[]), "m³", trench.sapatura, t("export.qty.trenchNote", &[("b", &fmt2(trench.latime_medie)), ("h", &fmt2(trench.adancime_medie))]));
     push(&c_ter, t("export.qty.sandBedding", &[]), "m³", trench.nisip, String::new());
     push(&c_ter, t("export.qty.backfill", &[]), "m³", trench.umplutura, String::new());
     for g in &pipes {
@@ -120,8 +118,7 @@ pub fn build(p: &ProjectData, secs: &[NetworkSection], reservoir: Option<&Reserv
     push(&c_eq, t("export.qty.caminGrav", &[]), "buc", count(SchemaKind::CaminGrav), String::new());
     push(&c_eq, t("export.qty.caminAer", &[]), "buc", count(SchemaKind::CaminAer), String::new());
     if let Some(r) = reservoir.filter(|r| r.v_total > 0.0) {
-        push(&c_eq, t("export.qty.reservoir", &[("v", &fmt2(r.v_total.ceil()))]), "buc", 1.0,
-            format!("{} / {}", p.reservoir.forma, p.reservoir.material));
+        push(&c_eq, t("export.qty.reservoir", &[("v", &fmt2(r.v_total.ceil()))]), "buc", 1.0, format!("{} / {}", p.reservoir.forma, p.reservoir.material));
     }
     push(&c_test, t("export.qty.pressureTest", &[]), "m", total_length, String::new());
     push(&c_test, t("export.qty.disinfection", &[]), "m", total_length, String::new());

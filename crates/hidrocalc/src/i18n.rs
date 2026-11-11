@@ -61,9 +61,7 @@ impl Table {
 /// Tabelele celor două limbi, construite o singură dată (textele trăiesc cât aplicația).
 fn tables() -> &'static (Table, Table) {
     static TABLES: OnceLock<(Table, Table)> = OnceLock::new();
-    TABLES.get_or_init(|| {
-        (Table::parse(include_str!("../../../assets/locales/ro.json")), Table::parse(include_str!("../../../assets/locales/en.json")))
-    })
+    TABLES.get_or_init(|| (Table::parse(include_str!("../../../assets/locales/ro.json")), Table::parse(include_str!("../../../assets/locales/en.json"))))
 }
 
 /// Cheile fără traducere se afișează ca atare; fiecare se păstrează o singură dată.

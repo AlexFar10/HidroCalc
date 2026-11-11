@@ -28,7 +28,11 @@ fn display_num(v: f64) -> String {
         "0".into()
     } else {
         let s = format!("{v}");
-        if s.len() > 14 { format!("{v:.6}").trim_end_matches('0').trim_end_matches('.').to_string() } else { s }
+        if s.len() > 14 {
+            format!("{v:.6}").trim_end_matches('0').trim_end_matches('.').to_string()
+        } else {
+            s
+        }
     }
 }
 
@@ -179,10 +183,7 @@ pub fn segmented(ui: &mut Ui, items: &[&str], sel: usize) -> Option<usize> {
             for (i, it) in items.iter().enumerate() {
                 let on = i == sel;
                 let txt = RichText::new(*it).size(12.5).color(if on { p.ink } else { p.muted });
-                let b = egui::Button::new(txt)
-                    .fill(if on { p.panel } else { Color32::TRANSPARENT })
-                    .stroke(Stroke::NONE)
-                    .corner_radius(CornerRadius::same(6));
+                let b = egui::Button::new(txt).fill(if on { p.panel } else { Color32::TRANSPARENT }).stroke(Stroke::NONE).corner_radius(CornerRadius::same(6));
                 if ui.add(b).clicked() && !on {
                     out = Some(i);
                 }
@@ -279,28 +280,12 @@ fn num_input_labelled(ui: &mut Ui, id: egui::Id, value: &mut f64, unit: Option<&
     let buf_id = id.with("buf");
     let edit_id = id.with("edit");
     let focused = ui.memory(|m| m.has_focus(edit_id));
-    let mut buf = if focused {
-        ui.data(|d| d.get_temp::<String>(buf_id)).unwrap_or_else(|| display_num(*value))
-    } else {
-        display_num(*value)
-    };
+    let mut buf = if focused { ui.data(|d| d.get_temp::<String>(buf_id)).unwrap_or_else(|| display_num(*value)) } else { display_num(*value) };
     let width = ui.available_width().max(50.0);
     let right = unit.map_or(8, |u| (u.chars().count() as f32 * 7.5 + 18.0) as i8);
-    let mut resp = ui.add(
-        TextEdit::singleline(&mut buf)
-            .id(edit_id)
-            .desired_width(width)
-            .margin(Margin { left: 8, right, top: 4, bottom: 4 })
-            .font(egui::TextStyle::Monospace),
-    );
+    let mut resp = ui.add(TextEdit::singleline(&mut buf).id(edit_id).desired_width(width).margin(Margin { left: 8, right, top: 4, bottom: 4 }).font(egui::TextStyle::Monospace));
     if let Some(u) = unit {
-        ui.painter().text(
-            resp.rect.right_center() - egui::vec2(10.0, 0.0),
-            egui::Align2::RIGHT_CENTER,
-            u,
-            egui::FontId::monospace(11.5),
-            pal(ui).muted,
-        );
+        ui.painter().text(resp.rect.right_center() - egui::vec2(10.0, 0.0), egui::Align2::RIGHT_CENTER, u, egui::FontId::monospace(11.5), pal(ui).muted);
     }
     if let Some(l) = label {
         resp = resp.labelled_by(l);
@@ -342,10 +327,7 @@ pub fn text_field(ui: &mut Ui, label: &str, value: &mut String, hint: &str) -> b
     let mut changed = false;
     ui.vertical(|ui| {
         let label_id = field_label(ui, label, None, false);
-        changed = ui
-            .add(TextEdit::singleline(value).hint_text(hint).desired_width(ui.available_width()))
-            .labelled_by(label_id)
-            .changed();
+        changed = ui.add(TextEdit::singleline(value).hint_text(hint).desired_width(ui.available_width())).labelled_by(label_id).changed();
     });
     changed
 }
@@ -365,14 +347,7 @@ pub fn combo_input(ui: &mut Ui, id: egui::Id, value: &mut String, options: &[(St
 }
 
 /// Listă derulantă legată de eticheta ei (`label`), pentru cititoarele de ecran.
-pub fn combo_labelled(
-    ui: &mut Ui,
-    id: egui::Id,
-    value: &mut String,
-    options: &[(String, String)],
-    width: f32,
-    label: Option<egui::Id>,
-) -> bool {
+pub fn combo_labelled(ui: &mut Ui, id: egui::Id, value: &mut String, options: &[(String, String)], width: f32, label: Option<egui::Id>) -> bool {
     let shown = options.iter().find(|(v, _)| v == value).map(|(_, d)| d.clone()).unwrap_or_else(|| value.clone());
     let mut changed = false;
     let resp = egui::ComboBox::from_id_salt(id).selected_text(shown).width(width).wrap_mode(egui::TextWrapMode::Truncate).show_ui(ui, |ui| {
@@ -394,19 +369,14 @@ pub fn computed_field(ui: &mut Ui, label: &str, text: &str, unit: Option<&str>, 
     let p = pal(ui);
     ui.vertical(|ui| {
         field_label(ui, label, tooltip, true);
-        egui::Frame::new()
-            .fill(p.panel)
-            .stroke(Stroke::new(1.0, p.border))
-            .corner_radius(CornerRadius::same(7))
-            .inner_margin(Margin::symmetric(8, 0))
-            .show(ui, |ui| {
-                ui.set_width(ui.available_width());
-                ui.spacing_mut().interact_size.y = 26.0;
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new(if danger { format!("⚠ {text}") } else { text.to_string() }).monospace().color(if danger { p.danger } else { p.ink2 }));
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| unit_suffix(ui, unit));
-                });
+        egui::Frame::new().fill(p.panel).stroke(Stroke::new(1.0, p.border)).corner_radius(CornerRadius::same(7)).inner_margin(Margin::symmetric(8, 0)).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.spacing_mut().interact_size.y = 26.0;
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(if danger { format!("⚠ {text}") } else { text.to_string() }).monospace().color(if danger { p.danger } else { p.ink2 }));
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| unit_suffix(ui, unit));
             });
+        });
     });
 }
 
@@ -480,17 +450,17 @@ pub fn tool_button_icon(ui: &mut Ui, text: &str, selected: bool, icon: impl FnOn
     let size = egui::vec2(ui.available_width(), 28.0);
     let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
     let hot = resp.hovered();
-    let fill = if selected { p.accent_soft } else if hot { p.border } else { p.panel2 };
+    let fill = if selected {
+        p.accent_soft
+    } else if hot {
+        p.border
+    } else {
+        p.panel2
+    };
     ui.painter().rect_filled(rect, CornerRadius::same(6), fill);
     let fg = if selected { p.accent } else { p.ink2 };
     icon(ui.painter(), egui::pos2(rect.left() + 15.0, rect.center().y), fg);
-    ui.painter().text(
-        egui::pos2(rect.left() + 30.0, rect.center().y),
-        egui::Align2::LEFT_CENTER,
-        text,
-        egui::FontId::proportional(12.5),
-        if selected { p.ink } else { p.ink2 },
-    );
+    ui.painter().text(egui::pos2(rect.left() + 30.0, rect.center().y), egui::Align2::LEFT_CENTER, text, egui::FontId::proportional(12.5), if selected { p.ink } else { p.ink2 });
     focus_ring(ui, &resp, 6);
     describe(&resp, egui::Role::Button, text);
     resp
@@ -555,22 +525,12 @@ pub fn confirm_delete(ui: &mut Ui, id: egui::Id, tip: &str, confirm_text: &str) 
 
 pub fn primary_button(ui: &mut Ui, text: &str) -> egui::Response {
     let p = pal(ui);
-    ui.add(
-        egui::Button::new(RichText::new(text).color(p.accent_fg).strong())
-            .fill(p.accent)
-            .stroke(Stroke::NONE)
-            .corner_radius(CornerRadius::same(8)),
-    )
+    ui.add(egui::Button::new(RichText::new(text).color(p.accent_fg).strong()).fill(p.accent).stroke(Stroke::NONE).corner_radius(CornerRadius::same(8)))
 }
 
 pub fn secondary_button(ui: &mut Ui, text: &str) -> egui::Response {
     let p = pal(ui);
-    ui.add(
-        egui::Button::new(RichText::new(text).color(p.ink2))
-            .fill(p.panel)
-            .stroke(Stroke::new(1.0, p.border))
-            .corner_radius(CornerRadius::same(8)),
-    )
+    ui.add(egui::Button::new(RichText::new(text).color(p.ink2)).fill(p.panel).stroke(Stroke::new(1.0, p.border)).corner_radius(CornerRadius::same(8)))
 }
 
 pub fn danger_button(ui: &mut Ui, text: &str, armed: bool) -> egui::Response {

@@ -21,11 +21,7 @@ type Groups = [(String, Scene3)];
 fn oriented(t: &Tri) -> [[f32; 3]; 3] {
     let [a, b, c] = [t.v[0].p, t.v[1].p, t.v[2].p];
     let face = cross(sub(b, a), sub(c, a));
-    let avg = [
-        t.v[0].n[0] + t.v[1].n[0] + t.v[2].n[0],
-        t.v[0].n[1] + t.v[1].n[1] + t.v[2].n[1],
-        t.v[0].n[2] + t.v[1].n[2] + t.v[2].n[2],
-    ];
+    let avg = [t.v[0].n[0] + t.v[1].n[0] + t.v[2].n[0], t.v[0].n[1] + t.v[1].n[1] + t.v[2].n[1], t.v[0].n[2] + t.v[1].n[2] + t.v[2].n[2]];
     if dot(face, avg) < 0.0 {
         [a, c, b]
     } else {
@@ -83,7 +79,11 @@ fn layer_name(s: &str) -> String {
             _ => '_',
         })
         .collect();
-    if n.is_empty() { "MODEL".into() } else { n }
+    if n.is_empty() {
+        "MODEL".into()
+    } else {
+        n
+    }
 }
 
 /// Cea mai apropiată culoare AutoCAD (ACI) dintre cele de bază.
@@ -177,7 +177,11 @@ pub fn dxf(groups: &Groups) -> Result<String, String> {
 // ─── GLB ─────────────────────────────────────────────────────────────────────
 
 fn srgb_to_linear(c: f32) -> f32 {
-    if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+    if c <= 0.04045 {
+        c / 12.92
+    } else {
+        ((c + 0.055) / 1.055).powf(2.4)
+    }
 }
 
 #[derive(Default)]

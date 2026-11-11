@@ -98,15 +98,7 @@ pub struct ConsumersData {
 
 impl Default for ConsumersData {
     fn default() -> Self {
-        Self {
-            inhabitants: 0.0,
-            growth_rate: 1.0,
-            perspective_years: 20.0,
-            perspective_inhabitants: 0.0,
-            q_gosp_per_capita: 120.0,
-            public_consumers: Vec::new(),
-            extra: Extra::new(),
-        }
+        Self { inhabitants: 0.0, growth_rate: 1.0, perspective_years: 20.0, perspective_inhabitants: 0.0, q_gosp_per_capita: 120.0, public_consumers: Vec::new(), extra: Extra::new() }
     }
 }
 
@@ -510,9 +502,7 @@ impl ProjectData {
         let obj = |k: &str| o.get(k).is_some_and(Value::is_object);
         let arr = |k: &str| o.get(k).is_some_and(Value::is_array);
         o.get("id").and_then(Value::as_str).is_some_and(|s| !s.is_empty())
-            && ["general", "consumers", "waterNeedConstants", "waterDemandCoefficients", "hydrants", "reservoir"]
-                .iter()
-                .all(|k| obj(k))
+            && ["general", "consumers", "waterNeedConstants", "waterDemandCoefficients", "hydrants", "reservoir"].iter().all(|k| obj(k))
             && arr("networkSections")
             && arr("networkSchema")
             && o["general"].get("name").is_some_and(Value::is_string)

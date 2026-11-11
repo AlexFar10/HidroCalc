@@ -32,11 +32,7 @@ pub struct ReservoirResults {
     pub v_total: f64,
 }
 
-pub fn calculate_reservoir(
-    data: ReservoirData,
-    demand: DemandForReservoir,
-    hydrant_results: HydrantForReservoir,
-) -> ReservoirResults {
+pub fn calculate_reservoir(data: ReservoirData, demand: DemandForReservoir, hydrant_results: HydrantForReservoir) -> ReservoirResults {
     let hr = data.i_med * data.l;
     let cota_radier = data.cota_teren + data.hb + hr;
     let v_compensation = data.c * demand.q_s_zi_max;
@@ -48,15 +44,7 @@ pub fn calculate_reservoir(
     let v_emergency = q_min * (data.t_av - data.ti) - data.qa * data.t_av;
     let v_total = v_compensation + v_fire_reserve + f64::max(0.0, v_emergency);
 
-    ReservoirResults {
-        cota_radier,
-        hr,
-        v_compensation,
-        v_fire_reserve,
-        v_emergency,
-        q_min,
-        v_total,
-    }
+    ReservoirResults { cota_radier, hr, v_compensation, v_fire_reserve, v_emergency, q_min, v_total }
 }
 
 #[cfg(test)]

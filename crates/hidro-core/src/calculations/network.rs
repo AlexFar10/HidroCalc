@@ -18,15 +18,15 @@ impl PehdDiameter {
 
 /// Diametrele PEHD standard (D_ext / D_int) [mm].
 pub const PEHD_DIAMETERS: &[PehdDiameter] = &[
-    PehdDiameter { d_ext: 20.0,  d_int: 15.2  },
-    PehdDiameter { d_ext: 25.0,  d_int: 20.2  },
-    PehdDiameter { d_ext: 32.0,  d_int: 27.2  },
-    PehdDiameter { d_ext: 40.0,  d_int: 35.2  },
-    PehdDiameter { d_ext: 50.0,  d_int: 45.2  },
-    PehdDiameter { d_ext: 63.0,  d_int: 57.0  },
-    PehdDiameter { d_ext: 75.0,  d_int: 67.8  },
-    PehdDiameter { d_ext: 90.0,  d_int: 81.4  },
-    PehdDiameter { d_ext: 110.0, d_int: 99.4  },
+    PehdDiameter { d_ext: 20.0, d_int: 15.2 },
+    PehdDiameter { d_ext: 25.0, d_int: 20.2 },
+    PehdDiameter { d_ext: 32.0, d_int: 27.2 },
+    PehdDiameter { d_ext: 40.0, d_int: 35.2 },
+    PehdDiameter { d_ext: 50.0, d_int: 45.2 },
+    PehdDiameter { d_ext: 63.0, d_int: 57.0 },
+    PehdDiameter { d_ext: 75.0, d_int: 67.8 },
+    PehdDiameter { d_ext: 90.0, d_int: 81.4 },
+    PehdDiameter { d_ext: 110.0, d_int: 99.4 },
     PehdDiameter { d_ext: 125.0, d_int: 113.0 },
     PehdDiameter { d_ext: 140.0, d_int: 126.6 },
     PehdDiameter { d_ext: 160.0, d_int: 144.6 },
@@ -143,18 +143,11 @@ pub struct NetworkConstants {
 
 fn detect_cycle(sections: &[NetworkSection]) -> bool {
     let section_ids: HashSet<&str> = sections.iter().map(|s| s.id.as_str()).collect();
-    let section_map: HashMap<&str, &NetworkSection> =
-        sections.iter().map(|s| (s.id.as_str(), s)).collect();
+    let section_map: HashMap<&str, &NetworkSection> = sections.iter().map(|s| (s.id.as_str(), s)).collect();
     let mut visited: HashSet<String> = HashSet::new();
     let mut in_stack: HashSet<String> = HashSet::new();
 
-    fn dfs(
-        id: &str,
-        section_ids: &HashSet<&str>,
-        section_map: &HashMap<&str, &NetworkSection>,
-        visited: &mut HashSet<String>,
-        in_stack: &mut HashSet<String>,
-    ) -> bool {
+    fn dfs(id: &str, section_ids: &HashSet<&str>, section_map: &HashMap<&str, &NetworkSection>, visited: &mut HashSet<String>, in_stack: &mut HashSet<String>) -> bool {
         if in_stack.contains(id) {
             return true;
         }
@@ -165,9 +158,7 @@ fn detect_cycle(sections: &[NetworkSection]) -> bool {
         in_stack.insert(id.to_string());
         if let Some(section) = section_map.get(id) {
             if let Some(parent) = &section.parent_section_id {
-                if section_ids.contains(parent.as_str())
-                    && dfs(parent, section_ids, section_map, visited, in_stack)
-                {
+                if section_ids.contains(parent.as_str()) && dfs(parent, section_ids, section_map, visited, in_stack) {
                     return true;
                 }
             }
@@ -177,9 +168,7 @@ fn detect_cycle(sections: &[NetworkSection]) -> bool {
     }
 
     for s in sections {
-        if !visited.contains(&s.id)
-            && dfs(&s.id, &section_ids, &section_map, &mut visited, &mut in_stack)
-        {
+        if !visited.contains(&s.id) && dfs(&s.id, &section_ids, &section_map, &mut visited, &mut in_stack) {
             return true;
         }
     }
@@ -197,11 +186,7 @@ fn detect_cycle(sections: &[NetworkSection]) -> bool {
 fn calculate_route_flows(sections: &mut [NetworkSection], hydrant_flow_ls: f64) {
     let n = sections.len();
     let index: HashMap<&str, usize> = sections.iter().enumerate().map(|(i, s)| (s.id.as_str(), i)).collect();
-    let parent: Vec<Option<usize>> = sections
-        .iter()
-        .enumerate()
-        .map(|(i, s)| s.parent_section_id.as_deref().and_then(|p| index.get(p).copied()).filter(|p| *p != i))
-        .collect();
+    let parent: Vec<Option<usize>> = sections.iter().enumerate().map(|(i, s)| s.parent_section_id.as_deref().and_then(|p| index.get(p).copied()).filter(|p| *p != i)).collect();
     let mut children: Vec<Vec<usize>> = vec![Vec::new(); n];
     for (i, p) in parent.iter().enumerate() {
         if let Some(p) = p {
@@ -255,8 +240,7 @@ fn calculate_section_hydraulic(section: &mut NetworkSection, constants: &Network
     let d_calc_mm = match section.d_calc_override {
         Some(v) => v,
         None => {
-            let d_calc_m =
-                (4.0 * q_m3s / (std::f64::consts::PI * constants.economic_velocity)).sqrt();
+            let d_calc_m = (4.0 * q_m3s / (std::f64::consts::PI * constants.economic_velocity)).sqrt();
             d_calc_m * 1000.0
         }
     };
@@ -266,16 +250,7 @@ fn calculate_section_hydraulic(section: &mut NetworkSection, constants: &Network
     // fie ales prin snapping la primul diametru standard ≥ Dp.
     let (d_std_ext, d_std_int) = match section.d_std_int_override {
         Some(di) if di > 0.0 => {
-            let ext = PEHD_DIAMETERS
-                .iter()
-                .min_by(|a, b| {
-                    (a.d_int - di)
-                        .abs()
-                        .partial_cmp(&(b.d_int - di).abs())
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                })
-                .map(|d| d.d_ext)
-                .unwrap_or(di);
+            let ext = PEHD_DIAMETERS.iter().min_by(|a, b| (a.d_int - di).abs().partial_cmp(&(b.d_int - di).abs()).unwrap_or(std::cmp::Ordering::Equal)).map(|d| d.d_ext).unwrap_or(di);
             (ext, di)
         }
         _ => match find_standard_diameter(d_calc_mm) {
@@ -331,11 +306,7 @@ pub enum HydraulicError {
 
 /// Calculul hidraulic al tuturor tronsoanelor, scris direct în ele (debite, diametre, pierderi).
 /// La eroare tronsoanele rămân neschimbate.
-pub fn calculate_sections_in_place(
-    sections: &mut [NetworkSection],
-    constants: &NetworkConstants,
-    hydrant_flow_ls: f64,
-) -> Result<(), HydraulicError> {
+pub fn calculate_sections_in_place(sections: &mut [NetworkSection], constants: &NetworkConstants, hydrant_flow_ls: f64) -> Result<(), HydraulicError> {
     if detect_cycle(sections) {
         return Err(HydraulicError::CycleDetected);
     }
@@ -350,22 +321,8 @@ pub fn calculate_sections_in_place(
 mod tests {
     use super::*;
 
-    fn section(
-        id: &str,
-        parent: Option<&str>,
-        length: f64,
-        q_extern: f64,
-        q_linear: f64,
-        has_hydrant: bool,
-    ) -> NetworkSection {
-        NetworkSection {
-            parent_section_id: parent.map(|p| p.to_string()),
-            length,
-            q_extern,
-            q_linear,
-            has_hydrant,
-            ..NetworkSection::new(id.to_string(), id.to_string())
-        }
+    fn section(id: &str, parent: Option<&str>, length: f64, q_extern: f64, q_linear: f64, has_hydrant: bool) -> NetworkSection {
+        NetworkSection { parent_section_id: parent.map(|p| p.to_string()), length, q_extern, q_linear, has_hydrant, ..NetworkSection::new(id.to_string(), id.to_string()) }
     }
 
     // A (root) → B (child), B are debit propriu + un hidrant; A doar debit
@@ -375,10 +332,7 @@ mod tests {
     //   A: q_own = 0.02·50 = 1.0 l/s → Qf_A = Qi_B = 6.0, Qi_A = 7.0, Qc_A = 6.5
     #[test]
     fn route_flow_cascades_from_leaf_to_root() {
-        let sections = vec![
-            section("A", None, 50.0, 0.0, 0.02, false),
-            section("B", Some("A"), 100.0, 0.0, 0.01, true),
-        ];
+        let sections = vec![section("A", None, 50.0, 0.0, 0.02, false), section("B", Some("A"), 100.0, 0.0, 0.01, true)];
         let mut result = sections;
         calculate_route_flows(&mut result, 5.0);
         let a = result.iter().find(|s| s.id == "A").unwrap();
@@ -410,11 +364,7 @@ mod tests {
     }
 
     fn constants() -> NetworkConstants {
-        NetworkConstants {
-            roughness: 0.0001,
-            viscosity: 1.31e-6,
-            economic_velocity: 1.0,
-        }
+        NetworkConstants { roughness: 0.0001, viscosity: 1.31e-6, economic_velocity: 1.0 }
     }
 
     // Override manual pe Qi/Qf: Qc urmează media lor forțată, iar restul
