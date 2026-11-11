@@ -68,6 +68,8 @@ const BAR_H: f32 = 56.0;
 /// Lățimea barei laterale.
 const SIDEBAR_W: f32 = 270.0;
 const SAVE_DEBOUNCE: Duration = Duration::from_millis(300);
+/// Pauza dintre reîncercările automate după o salvare eșuată.
+const SAVE_RETRY: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
 #[serde(default)]
@@ -120,6 +122,9 @@ pub struct HidroApp {
     /// Ultima variantă salvată, pentru a detecta modificările.
     saved: Option<ProjectData>,
     dirty_since: Option<Instant>,
+    /// Ultima eroare de salvare și momentul ei: mesajul apare o singură dată, iar
+    /// reîncercarea automată se face rar (nu la fiecare cadru).
+    save_error: Option<(String, Instant)>,
     pub results: Option<ProjectResults>,
     delete_armed: Option<(String, Instant)>,
     toasts: Vec<Toast>,
@@ -169,6 +174,7 @@ impl HidroApp {
             project: None,
             saved: None,
             dirty_since: None,
+            save_error: None,
             results: None,
             delete_armed: None,
             toasts: Vec::new(),
@@ -203,6 +209,7 @@ impl HidroApp {
         self.saved = Some(p.clone());
         self.project = Some(p);
         self.dirty_since = None;
+        self.save_error = None;
     }
 
     pub fn create_project(&mut self) {
@@ -243,20 +250,22 @@ impl HidroApp {
             return;
         }
         p.updated_at = now_iso();
-        let mut reload = false;
         match db.save(p) {
             Ok(()) => {
                 self.saved = Some(p.clone());
                 self.dirty_since = None;
-                reload = true;
+                self.save_error = None;
+                self.reload_list();
             }
             Err(e) => {
                 self.dirty_since = None;
-                self.toast(e, true);
+                // Același mesaj nu se repetă la fiecare reîncercare.
+                let repeated = self.save_error.as_ref().is_some_and(|(prev, _)| prev == &e);
+                self.save_error = Some((e.clone(), Instant::now()));
+                if !repeated {
+                    self.toast(format!("{}: {e}", self.t.t("app.saveFailed")), true);
+                }
             }
-        }
-        if reload {
-            self.reload_list();
         }
     }
 
@@ -295,25 +304,6 @@ impl HidroApp {
             }
         }
         self.open(p);
-    }
-
-    /// Exportul proiectului ca JSON (schema desenată, setările hărții, punctele topo), cu
-    /// metadate de format. Fără buton deocamdată: urmează să fie legat de interfață.
-    #[allow(dead_code)]
-    fn export_json(&mut self) {
-        self.flush();
-        let Some(p) = &self.project else { return };
-        let name = if p.general.name.is_empty() { "proiect".to_string() } else { p.general.name.clone() };
-        let Some(path) = rfd::FileDialog::new().add_filter("JSON", &["json"]).set_file_name(format!("{name}.json")).save_file()
-        else {
-            return;
-        };
-        let doc = p.to_export_json(env!("CARGO_PKG_VERSION"), &now_iso());
-        let res = serde_json::to_string_pretty(&doc).map_err(|e| e.to_string()).and_then(|s| std::fs::write(&path, s).map_err(|e| e.to_string()));
-        match res {
-            Ok(()) => self.toast(format!("{} ✓", path.display()), false),
-            Err(e) => self.toast(e, true),
-        }
     }
 
     fn set_settings(&mut self, ctx: &egui::Context, s: Settings) {
@@ -363,7 +353,7 @@ impl HidroApp {
         let mut toggle_sidebar = false;
         let mut go_home = false;
         let mut skip = false;
-        let closed = !self.sidebar_visible(ui.ctx());
+        let closed = !self.sidebar_visible();
         let has_project = self.project.is_some();
         let step = self.project.as_ref().map_or(0, |p| p.current_step);
         let names = self.t.list("steps.names");
@@ -375,7 +365,7 @@ impl HidroApp {
                 if has_project {
                     // „Sari la conținut”: primul element la Tab; devine vizibil doar când are focus.
                     let r = ui.interact(egui::Rect::from_min_size(ui.cursor().min, egui::vec2(1.0, 1.0)), egui::Id::NULL.with("skip_link"), egui::Sense::click());
-                    widgets::describe(&r, egui::Role::Button, &self.t.t("a11y.skip"));
+                    widgets::describe(&r, egui::Role::Button, self.t.t("a11y.skip"));
                     if r.has_focus() {
                         egui::Area::new(egui::Id::NULL.with("skip_link_area")).order(egui::Order::Foreground).fixed_pos(egui::pos2(12.0, 14.0)).show(ui.ctx(), |ui| {
                             egui::Frame::new().fill(p.accent).corner_radius(CornerRadius::same(8)).inner_margin(Margin::symmetric(12, 6)).show(ui, |ui| {
@@ -395,7 +385,7 @@ impl HidroApp {
                         widgets::wordmark(ui, 18.0);
                     });
                     let click = ui.interact(head.response.rect, egui::Id::NULL.with("logo_home"), egui::Sense::click());
-                    widgets::describe(&click, egui::Role::Button, &self.t.t("nav.home"));
+                    widgets::describe(&click, egui::Role::Button, self.t.t("nav.home"));
                     if click.hovered() {
                         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                     }
@@ -470,15 +460,15 @@ impl HidroApp {
                     if !has_project {
                         let tip = if s.dark { self.t.t("nav.switchToLight") } else { self.t.t("nav.switchToDark") };
                         let dark = s.dark;
-                        if widgets::icon_button(ui, &tip, |pt, r, col, bg| widgets::paint_theme_icon(pt, r, col, bg, dark)).clicked() {
+                        if widgets::icon_button(ui, tip, |pt, r, col, bg| widgets::paint_theme_icon(pt, r, col, bg, dark)).clicked() {
                             s.dark = !s.dark;
                         }
                         lang_switch(ui, &mut s);
                         ui.add_space(8.0);
-                        if widgets::primary_button(ui, &self.t.t("home.newProject")).clicked() {
+                        if widgets::primary_button(ui, self.t.t("home.newProject")).clicked() {
                             new = true;
                         }
-                        if widgets::secondary_button(ui, &self.t.t("home.importProject")).clicked() {
+                        if widgets::secondary_button(ui, self.t.t("home.importProject")).clicked() {
                             import = true;
                         }
                     }
@@ -505,9 +495,8 @@ impl HidroApp {
         r
     }
 
-    /// Bara laterală e vizibilă: pe ferestre înguste doar dacă a fost deschisă manual,
-    /// altfel după preferința din setări.
-    fn sidebar_visible(&self, _ctx: &egui::Context) -> bool {
+    /// Bara laterală e vizibilă (preferința din setări).
+    fn sidebar_visible(&self) -> bool {
         !self.settings.sidebar_closed
     }
 
@@ -570,38 +559,39 @@ impl HidroApp {
         let cmd = |k: &str| format!("{}+{k}", ctx.format_modifiers(egui::Modifiers::COMMAND));
         let v = |items: &[&str]| -> Vec<String> { items.iter().map(|s| s.to_string()).collect() };
         // (titlu, [(taste, descriere)])
-        let sections: Vec<(&str, Vec<(Vec<String>, String)>)> = vec![
+        type HelpRow = (Vec<String>, String);
+        let sections: Vec<(&str, Vec<HelpRow>)> = vec![
             (
                 "help.general",
                 vec![
-                    (v(&["Tab", "Shift+Tab"]), t.t("help.tab")),
-                    (v(&["Enter", "Space"]), t.t("help.activate")),
+                    (v(&["Tab", "Shift+Tab"]), t.t("help.tab").to_string()),
+                    (v(&["Enter", "Space"]), t.t("help.activate").to_string()),
                     (vec![sc(&SC_PREV), sc(&SC_NEXT)], format!("{} / {}", t.t("help.prev"), t.t("help.next"))),
-                    (vec![cmd("1…9")], t.t("help.jump")),
-                    (vec![sc(&SC_SIDEBAR)], t.t("help.sidebar")),
-                    (vec![sc(&SC_HELP)], t.t("help.help")),
+                    (vec![cmd("1…9")], t.t("help.jump").to_string()),
+                    (vec![sc(&SC_SIDEBAR)], t.t("help.sidebar").to_string()),
+                    (vec![sc(&SC_HELP)], t.t("help.help").to_string()),
                 ],
             ),
             (
                 "help.plan",
                 vec![
-                    (v(&["←", "↑", "→", "↓"]), t.t("help.planMove")),
-                    (v(&["PageDown", "PageUp"]), t.t("help.planCycle")),
-                    (v(&["V", "L", "R", "S", "H", "G", "A", "U", "T", "E"]), t.t("help.planTools")),
-                    (v(&["Enter"]), t.t("help.planEnter")),
-                    (v(&["+", "−"]), t.t("help.planZoom")),
-                    (v(&["Delete"]), t.t("help.planDel")),
-                    (vec![cmd("Z")], t.t("help.planUndo")),
-                    (v(&["Esc"]), t.t("help.planEsc")),
+                    (v(&["←", "↑", "→", "↓"]), t.t("help.planMove").to_string()),
+                    (v(&["PageDown", "PageUp"]), t.t("help.planCycle").to_string()),
+                    (v(&["V", "L", "R", "S", "H", "G", "A", "U", "T", "E"]), t.t("help.planTools").to_string()),
+                    (v(&["Enter"]), t.t("help.planEnter").to_string()),
+                    (v(&["+", "−"]), t.t("help.planZoom").to_string()),
+                    (v(&["Delete"]), t.t("help.planDel").to_string()),
+                    (vec![cmd("Z")], t.t("help.planUndo").to_string()),
+                    (v(&["Esc"]), t.t("help.planEsc").to_string()),
                 ],
             ),
             (
                 "help.view3d",
                 vec![
-                    (v(&["←", "↑", "→", "↓"]), t.t("help.rotate")),
-                    (v(&["Shift", "←", "↑", "→", "↓"]), t.t("help.pan3d")),
-                    (v(&["+", "−"]), t.t("help.zoom3d")),
-                    (v(&["Home"]), t.t("help.reset3d")),
+                    (v(&["←", "↑", "→", "↓"]), t.t("help.rotate").to_string()),
+                    (v(&["Shift", "←", "↑", "→", "↓"]), t.t("help.pan3d").to_string()),
+                    (v(&["+", "−"]), t.t("help.zoom3d").to_string()),
+                    (v(&["Home"]), t.t("help.reset3d").to_string()),
                 ],
             ),
         ];
@@ -627,7 +617,7 @@ impl HidroApp {
                 egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
                     ui.spacing_mut().item_spacing.y = 6.0;
                     // Accesibilitate: setările, primele.
-                    widgets::section_title(ui, &t.t("help.a11yTitle"));
+                    widgets::section_title(ui, t.t("help.a11yTitle"));
                     widgets::card(ui, |ui| {
                         let pct = if s.ui_scale_pct == 0 { 100 } else { s.ui_scale_pct };
                         ui.horizontal(|ui| {
@@ -652,7 +642,7 @@ impl HidroApp {
                     });
                     for (title, rows) in &sections {
                         ui.add_space(8.0);
-                        widgets::section_title(ui, &t.t(title));
+                        widgets::section_title(ui, t.t(title));
                         widgets::card(ui, |ui| {
                             ui.spacing_mut().item_spacing.y = 8.0;
                             for (keys, desc) in rows {
@@ -697,7 +687,7 @@ impl HidroApp {
                         self.show_help = !self.show_help;
                     }
                     let dark = s.dark;
-                    if widgets::icon_button(ui, &tip, |pt, r, col, bg| widgets::paint_theme_icon(pt, r, col, bg, dark)).clicked() {
+                    if widgets::icon_button(ui, tip, |pt, r, col, bg| widgets::paint_theme_icon(pt, r, col, bg, dark)).clicked() {
                         s.dark = !s.dark;
                     }
                 });
@@ -766,7 +756,7 @@ impl HidroApp {
                                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                         let armed = self.delete_armed.as_ref().is_some_and(|(id, _)| id == &e.id);
                                         let label = if armed { self.t.t("home.deleteConfirm") } else { self.t.t("home.delete") };
-                                        if widgets::danger_button(ui, &label, armed).clicked() {
+                                        if widgets::danger_button(ui, label, armed).clicked() {
                                             delete = Some((e.id.clone(), armed));
                                         }
                                     });
@@ -810,7 +800,7 @@ impl HidroApp {
         ui.add_space(14.0);
         ui.label(RichText::new(self.t.t("nav.menuProject").to_uppercase()).size(11.5).strong().color(p.muted));
         ui.add_space(2.0);
-        let title = if project.general.name.is_empty() { self.t.t("common.newProject") } else { project.general.name.clone() };
+        let title = if project.general.name.is_empty() { self.t.t("common.newProject") } else { project.general.name.as_str() };
         ui.add(egui::Label::new(RichText::new(title).size(15.0).color(p.ink)).wrap());
         if !project.general.locality.is_empty() {
             ui.label(RichText::new(&project.general.locality).size(12.0).color(p.muted));
@@ -846,7 +836,7 @@ impl HidroApp {
                 }
                 for e in &self.projects {
                     let name = if e.id == cur_id { project.general.name.clone() } else { e.name.clone() };
-                    let name = if name.is_empty() { self.t.t("common.newProject") } else { name };
+                    let name = if name.is_empty() { self.t.t("common.newProject").to_string() } else { name };
                     let txt = if e.id == cur_id { RichText::new(name).color(p.accent) } else { RichText::new(name) };
                     if ui.add(egui::Button::new(txt).frame(false)).clicked() && e.id != cur_id {
                         act = Some(Act::Open(e.id.clone()));
@@ -869,10 +859,10 @@ impl HidroApp {
                     });
                 });
             };
-            row(ui, &self.t.t("sidebar.perspectiveInhabitants"), project.consumers.perspective_inhabitants, "loc.", 0);
+            row(ui, self.t.t("sidebar.perspectiveInhabitants"), project.consumers.perspective_inhabitants, "loc.", 0);
             row(ui, "Q_s or max", r.water_demand.q_s_or_max_ls, "l/s", 3);
-            row(ui, &self.t.t("sidebar.fireReserveV"), r.hydrants.v_ri, "m³", 3);
-            row(ui, &self.t.t("sidebar.vTotal"), r.reservoir.v_total, "m³", 3);
+            row(ui, self.t.t("sidebar.fireReserveV"), r.hydrants.v_ri, "m³", 3);
+            row(ui, self.t.t("sidebar.vTotal"), r.reservoir.v_total, "m³", 3);
             row(ui, "Q_dim", r.design_flows.q_dim_network, "m³/h", 3);
         }
 
@@ -910,21 +900,12 @@ impl HidroApp {
                 project.consumers.perspective_inhabitants = n;
             }
             self.results = Some(pipeline::compute(project));
-            // Calculul hidraulic al rețelei, live (idempotent, deci se scrie doar la schimbare).
-            match pipeline::compute_network(project) {
-                Ok(secs) => {
-                    if secs != project.network_sections {
-                        project.network_sections = secs;
-                    }
-                    self.net_ui.error = None;
-                }
-                Err(e) => self.net_ui.error = Some(e),
-            }
+            // Calculul hidraulic al rețelei, live, direct în tronsoane (idempotent).
+            self.net_ui.error = pipeline::compute_network(project).err();
         }
 
-        // Ecran complet (pasul 8): fără bara laterală și fără pași, zona de desen ia tot spațiul.
         // Ordinea de creare = ordinea Tab: întâi bara de sus (logo, pași), apoi bara laterală, apoi conținutul.
-        let sidebar_visible = self.sidebar_visible(ui.ctx());
+        let sidebar_visible = self.sidebar_visible();
         let bar = self.app_bar(ui, !sidebar_visible);
         if sidebar_visible {
             let side = egui::Panel::left("sidebar")
@@ -948,6 +929,11 @@ impl HidroApp {
             }
             // Dacă un ecran e mai lat decât fereastra, conținutul se derulează orizontal (bară vizibilă),
             // în loc să iasă din fereastră.
+            // Fără bază de date nimic nu se salvează: avertisment permanent, în orice pas.
+            if self.db.is_none() {
+                widgets::alert(ui, self.t.t("app.notSaved"), true);
+                ui.add_space(8.0);
+            }
             let viewport_w = ui.available_width();
             ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
             egui::ScrollArea::both().id_salt(("step", step)).auto_shrink(false).show(ui, |ui| {
@@ -983,23 +969,23 @@ impl HidroApp {
     /// Bytes pentru exporturile care nu cer captură; `Err` cu un mesaj scurt.
     fn export_bytes(&self, id: ExportId) -> Result<Vec<u8>, String> {
         use crate::export3d::ModelFormat;
-        let p = self.project.as_ref().ok_or("fără proiect")?;
+        let p = self.project.as_ref().ok_or_else(|| self.t.t("exp.unavailable"))?;
         match id {
             ExportId::Json => serde_json::to_vec_pretty(&p.to_export_json(env!("CARGO_PKG_VERSION"), &now_iso())).map_err(|e| e.to_string()),
-            ExportId::Dxf2d => hidro_core::export::dxf::export(&p.network_schema, crate::canvas::scale_ratio(p)).map(String::into_bytes).ok_or_else(|| self.t.t("canvas.exportEmptySchema")),
+            ExportId::Dxf2d => hidro_core::export::dxf::export(&p.network_schema, crate::canvas::scale_ratio(p)).map(String::into_bytes).ok_or_else(|| self.t.t("canvas.exportEmptySchema").to_string()),
             ExportId::Dxf3d => crate::view3d::View3D::model_bytes(p, ModelFormat::Dxf),
             ExportId::Glb => crate::view3d::View3D::model_bytes(p, ModelFormat::Glb),
             ExportId::Stl => crate::view3d::View3D::model_bytes(p, ModelFormat::Stl),
             ExportId::DocMemoriu => {
                 use hidro_core::export::{document, docx, MEMORIU_TEMPLATE};
-                let res = self.results.as_ref().ok_or("fără rezultate")?;
+                let res = self.results.as_ref().ok_or_else(|| self.t.t("exp.unavailable"))?;
                 let today = chrono::Local::now().format("%d.%m.%Y").to_string();
                 let t = &self.t;
                 let tr = |k: &str, args: &[(&str, &str)]| t.tf(k, args);
                 let data = document::build(p, res, &p.network_sections, &today, &tr);
                 docx::render(MEMORIU_TEMPLATE, &data).map(|(bytes, _missing)| bytes)
             }
-            _ => Err("indisponibil".into()),
+            _ => Err(self.t.t("exp.unavailable").to_string()),
         }
     }
 
@@ -1054,7 +1040,7 @@ impl HidroApp {
                     }
                     None if waited > Duration::from_secs(30) => {
                         job.cap = None;
-                        job.errs.push(format!("{}: timeout", id.ext()));
+                        job.errs.push(format!("{}: {}", id.ext(), self.t.t("exp.timeout")));
                     }
                     None => {
                         ctx.request_repaint();
@@ -1124,8 +1110,8 @@ impl HidroApp {
                             let text = if t.error { format!("⚠  {}", t.text) } else { t.text.clone() };
                             ui.add(egui::Label::new(RichText::new(text).color(fg)).wrap());
                             let r = ui.add(egui::Button::new(RichText::new("✕").color(p.muted)).frame(false));
-                            widgets::describe(&r, egui::Role::Button, &close_tip);
-                            if r.on_hover_text(&close_tip).clicked() {
+                            widgets::describe(&r, egui::Role::Button, close_tip);
+                            if r.on_hover_text(close_tip).clicked() {
                                 t.closed = true;
                             }
                         });
@@ -1173,7 +1159,7 @@ impl eframe::App for HidroApp {
         }
         if std::mem::take(&mut self.net_ui.save_now) {
             self.flush();
-            self.toast(self.t.t("exp.saveBtn") + " ✓", false);
+            self.toast(format!("{} ✓", self.t.t("exp.saveBtn")), false);
         }
         self.drive_export(ui.ctx());
         self.net_ui.export_busy = self.export_job.is_some();
@@ -1183,7 +1169,12 @@ impl eframe::App for HidroApp {
         self.toasts_ui(&ctx);
 
         // Salvare cu debounce (ca `saveProject()` din store-ul React).
-        if self.project.is_some() && self.project != self.saved {
+        // Fără bază de date nu există unde salva (avertismentul e afișat în pagină); după o
+        // eroare de salvare se reîncearcă rar, nu la fiecare cadru.
+        let retry_wait = self.save_error.as_ref().is_some_and(|(_, at)| at.elapsed() < SAVE_RETRY);
+        if retry_wait {
+            ctx.request_repaint_after(SAVE_RETRY);
+        } else if self.db.is_some() && self.project.is_some() && self.project != self.saved {
             let since = *self.dirty_since.get_or_insert_with(Instant::now);
             if since.elapsed() >= SAVE_DEBOUNCE {
                 self.flush();
@@ -1205,660 +1196,4 @@ impl eframe::App for HidroApp {
 /// Randări fără fereastră ale ecranelor principale (verificare vizuală).
 /// `cargo test -p hidrocalc snapshots -- --nocapture` → PNG-uri în `target/ui-snapshots/`.
 #[cfg(test)]
-mod snapshots {
-    use super::*;
-    use hidro_core::model::PublicConsumer;
-
-    pub(super) fn sample(app: &mut HidroApp) {
-        app.create_project();
-        let p = app.project.as_mut().unwrap();
-        p.general.name = "Alimentare cu apă sat Ștefănești".into();
-        p.general.locality = "Ștefănești".into();
-        p.general.county = "Timiș".into();
-        p.consumers.inhabitants = 1850.0;
-        p.consumers.public_consumers.push(PublicConsumer {
-            id: "pc1".into(),
-            kind: "Școală gimnazială".into(),
-            quantity: 1.0,
-            num_consumers: 240.0,
-            unit_type: "elevi".into(),
-            q_specific: 50.0,
-            ..Default::default()
-        });
-        p.reservoir.cota_teren = 102.5;
-        p.reservoir.hb = 14.0;
-        p.reservoir.i_med = 0.003;
-        p.reservoir.l = 4200.0;
-        p.reservoir.coef_debit_min = 0.3;
-        p.reservoir.t_av = 12.0;
-        p.reservoir.ti = 2.0;
-        // Rețea: R → Tr1 → (hidrant) → Tr2 ; Tr1 → Tr3 ; Tr3 → Tr4
-        use hidro_core::model::{SchemaElement, SchemaKind};
-        let tr = |id: &str, label: &str, a: (f64, f64), b: (f64, f64)| SchemaElement {
-            id: id.into(),
-            kind: SchemaKind::Tronson,
-            x: a.0,
-            y: a.1,
-            x2: Some(b.0),
-            y2: Some(b.1),
-            label: Some(label.into()),
-            ..Default::default()
-        };
-        p.network_schema = vec![
-            SchemaElement { id: "rez".into(), kind: SchemaKind::Rezervor, x: -44.0, y: 0.0, ..Default::default() },
-            tr("a", "Tr1", (0.0, 0.0), (1200.0, 0.0)),
-            SchemaElement { id: "h".into(), kind: SchemaKind::Hidrant, x: 1207.0, y: 0.0, ..Default::default() },
-            tr("b", "Tr2", (1214.0, 0.0), (2000.0, 0.0)),
-            tr("c", "Tr3", (1203.0, 2.0), (1203.0, 900.0)),
-            tr("d", "Tr4", (1203.0, 900.0), (1900.0, 900.0)),
-        ];
-        let mut n = 0;
-        p.network_sections = hidro_core::schema::build_sections_from_schema(&p.network_schema, &[], 1000.0, || {
-            n += 1;
-            format!("s{n}")
-        });
-        for (i, s) in p.network_sections.iter_mut().enumerate() {
-            s.q_linear = 0.004 + 0.002 * i as f64;
-            s.zeta = 2.0;
-        }
-        p.network_sections[1].q_extern = 1.2;
-        for (s, (up, dn)) in p.network_sections.iter_mut().zip([(102.5, 99.8), (99.8, 97.2), (99.8, 98.9), (98.9, 98.4)]) {
-            s.cota_up = Some(up);
-            s.cota_down = Some(dn);
-            s.cota_up_source = Some("manual".into());
-            s.cota_down_source = Some("manual".into());
-        }
-    }
-
-    #[test]
-    fn render_main_screens() {
-        let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/ui-snapshots");
-        std::fs::create_dir_all(&out).unwrap();
-        let dir = std::env::temp_dir().join(format!("hidrocalc-snap-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        for dark in [false, true] {
-            let db_path = dir.join(format!("s{dark}.db"));
-            let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1360.0, 880.0)).with_theme(if dark { egui::Theme::Dark } else { egui::Theme::Light }).wgpu().build_eframe(|cc| {
-                HidroApp::with_db(cc, Settings { lang: Lang::Ro, dark, ..Default::default() }, Db::open(&db_path))
-            });
-            let suffix = if dark { "dark" } else { "light" };
-            h.run_steps(3);
-            h.render().unwrap().save(out.join(format!("home-empty-{suffix}.png"))).unwrap();
-            sample(h.state_mut());
-            for step in 1..=9 {
-                h.state_mut().project.as_mut().unwrap().current_step = step;
-                if step == 8 {
-                    h.state_mut().net_ui.selected = Some("s3".into());
-                }
-                h.run_steps(3);
-                h.render().unwrap().save(out.join(format!("step{step}-{suffix}.png"))).unwrap();
-            }
-            // Vederea 3D (fără teren: proiectul de test nu are hartă ancorată)
-            {
-                let st = h.state_mut();
-                st.project.as_mut().unwrap().current_step = 8;
-                st.net_ui.show_3d = true;
-            }
-            h.run_steps(3);
-            h.render().unwrap().save(out.join(format!("step8-3d-{suffix}.png"))).unwrap();
-            h.state_mut().net_ui.show_3d = false;
-            // Ecran complet: fără bara laterală și pași
-            h.state_mut().net_ui.expanded = true;
-            h.run_steps(3);
-            h.render().unwrap().save(out.join(format!("step8-fullscreen-{suffix}.png"))).unwrap();
-            h.state_mut().net_ui.expanded = false;
-            h.state_mut().close_project_for_test();
-            h.run_steps(3);
-            h.render().unwrap().save(out.join(format!("home-list-{suffix}.png"))).unwrap();
-        }
-        println!("snapshots: {}", out.canonicalize().unwrap().display());
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    /// Exportul JSON păstrează tot proiectul: schema desenată, setările canvasului, tronsoanele.
-    #[test]
-    fn json_export_roundtrip_keeps_schema() {
-        let dir = std::env::temp_dir().join(format!("hidrocalc-json-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let db_path = dir.join("j.db");
-        let mut h = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1360.0, 880.0))
-            .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
-        sample(h.state_mut());
-        let p = h.state().project.clone().unwrap();
-        assert!(!p.network_schema.is_empty(), "proiectul de test trebuie să aibă schemă");
-        let text = serde_json::to_string_pretty(&p.to_export_json("0.1.0", "2026-11-10T10:00:00Z")).unwrap();
-        let value: serde_json::Value = serde_json::from_str(&text).unwrap();
-        let back = ProjectData::from_export_value(value).unwrap();
-        assert_eq!(back, p, "exportul JSON a pierdut date");
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    /// Modelul 3D al proiectului de test se exportă în toate cele trei formate.
-    #[test]
-    fn model_3d_exports_for_sample_project() {
-        use crate::export3d::ModelFormat;
-        let dir = std::env::temp_dir().join(format!("hidrocalc-3d-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let db_path = dir.join("m.db");
-        let mut h = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1360.0, 880.0))
-            .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
-        sample(h.state_mut());
-        h.state_mut().project.as_mut().unwrap().current_step = 8;
-        h.run_steps(2);
-        let p = h.state().project.as_ref().unwrap();
-        let glb = crate::view3d::View3D::model_bytes(p, ModelFormat::Glb).unwrap();
-        let stl = crate::view3d::View3D::model_bytes(p, ModelFormat::Stl).unwrap();
-        let dxf = String::from_utf8(crate::view3d::View3D::model_bytes(p, ModelFormat::Dxf).unwrap()).unwrap();
-        assert_eq!(&glb[0..4], b"glTF");
-        let n = u32::from_le_bytes(stl[80..84].try_into().unwrap()) as usize;
-        assert!(n > 100, "prea puține triunghiuri: {n}");
-        assert_eq!(stl.len(), 84 + 50 * n);
-        assert_eq!(dxf.matches("3DFACE").count(), n, "câte o față DXF pe triunghi");
-        if let Ok(out) = std::env::var("HIDRO_3D_OUT") {
-            std::fs::write(format!("{out}/model.glb"), &glb).unwrap();
-            std::fs::write(format!("{out}/model.stl"), &stl).unwrap();
-            std::fs::write(format!("{out}/model.dxf"), dxf).unwrap();
-        }
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    /// Panoul de export de la pasul 9, într-o fereastră înaltă (verificare vizuală).
-    #[test]
-    fn export_panel_snapshot() {
-        let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/ui-snapshots");
-        std::fs::create_dir_all(&out).unwrap();
-        for dark in [false, true] {
-            let dir = std::env::temp_dir().join(format!("hidrocalc-expp-{}", uuid::Uuid::new_v4()));
-            std::fs::create_dir_all(&dir).unwrap();
-            let db_path = dir.join("x.db");
-            let theme = if dark { egui::Theme::Dark } else { egui::Theme::Light };
-            let mut h = egui_kittest::Harness::builder()
-                .with_size(egui::vec2(1360.0, 1900.0))
-                .with_theme(theme)
-                .wgpu()
-                .build_eframe(|cc| HidroApp::with_db(cc, Settings { dark, ..Default::default() }, Db::open(&db_path)));
-            sample(h.state_mut());
-            h.state_mut().project.as_mut().unwrap().current_step = 9;
-            h.state_mut().net_ui.export_sel.insert(ExportId::Json);
-            h.state_mut().net_ui.export_sel.insert(ExportId::Glb);
-            h.run_steps(4);
-            h.render().unwrap().save(out.join(format!("export-panel-{}.png", if dark { "dark" } else { "light" }))).unwrap();
-            let _ = std::fs::remove_dir_all(dir);
-        }
-    }
-
-    /// Bara laterală cu paleta de desen și panoul hărții deschis (verificare vizuală, fără internet).
-    #[test]
-    fn step8_sidebar_with_map_snapshot() {
-        let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/ui-snapshots");
-        std::fs::create_dir_all(&out).unwrap();
-        for dark in [false, true] {
-            let dir = std::env::temp_dir().join(format!("hidrocalc-sb-{}", uuid::Uuid::new_v4()));
-            std::fs::create_dir_all(&dir).unwrap();
-            let db_path = dir.join("s.db");
-            let theme = if dark { egui::Theme::Dark } else { egui::Theme::Light };
-            let mut h = egui_kittest::Harness::builder()
-                .with_size(egui::vec2(1360.0, 1800.0))
-                .with_theme(theme)
-                .wgpu()
-                .build_eframe(|cc| HidroApp::with_db(cc, Settings { dark, ..Default::default() }, Db::open(&db_path)));
-            sample(h.state_mut());
-            {
-                let p = h.state_mut().project.as_mut().unwrap();
-                let a = hidro_core::geo::MapAnchor { lat: 45.7537, lng: 21.2257, world_x: 0.0, world_y: 0.0, tile_zoom: hidro_core::geo::compute_tile_zoom(45.7537, 1000.0) };
-                p.network_canvas_settings.as_object_mut().unwrap().insert("mapAnchor".into(), serde_json::to_value(a).unwrap());
-                p.network_canvas_settings.as_object_mut().unwrap().insert("autoTerrainCota".into(), serde_json::json!(false));
-                p.current_step = 8;
-            }
-            h.run_steps(3);
-            h.state_mut().net_ui.canvas.map.open = true;
-            h.run_steps(4);
-            h.render().unwrap().save(out.join(format!("step8-sidebar-map-{}.png", if dark { "dark" } else { "light" }))).unwrap();
-            let _ = std::fs::remove_dir_all(dir);
-        }
-    }
-
-    /// Pasul 9 fără tronsoane (ce se poate face aici, blocat) și bara laterală ascunsă.
-    #[test]
-    fn step9_empty_and_collapsed_sidebar_snapshots() {
-        let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/ui-snapshots");
-        std::fs::create_dir_all(&out).unwrap();
-        let dir = std::env::temp_dir().join(format!("hidrocalc-e9-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let db_path = dir.join("e.db");
-        let mut h = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1360.0, 1500.0))
-            .with_theme(egui::Theme::Light)
-            .wgpu()
-            .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
-        h.state_mut().create_project();
-        h.state_mut().project.as_mut().unwrap().current_step = 9;
-        h.run_steps(3);
-        h.render().unwrap().save(out.join("step9-empty-light.png")).unwrap();
-        h.state_mut().settings.sidebar_closed = true;
-        h.run_steps(3);
-        h.render().unwrap().save(out.join("step9-empty-collapsed.png")).unwrap();
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    /// Scurtături și navigare cu tastatura: pași, bara laterală, ajutor, butoane desenate manual, vederea 3D.
-    #[test]
-    fn keyboard_navigation_works() {
-        use egui_kittest::kittest::Queryable;
-        let dir = std::env::temp_dir().join(format!("hidrocalc-kb-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let db_path = dir.join("k.db");
-        let mut h = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1360.0, 900.0))
-            .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
-        sample(h.state_mut());
-        h.state_mut().project.as_mut().unwrap().current_step = 3;
-        h.run_steps(2);
-        let step = |h: &egui_kittest::Harness<'_, HidroApp>| h.state().project.as_ref().unwrap().current_step;
-
-        // Pași: Cmd+] / Cmd+[ și Cmd+număr
-        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::CloseBracket);
-        h.run_steps(2);
-        assert_eq!(step(&h), 4);
-        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::OpenBracket);
-        h.run_steps(2);
-        assert_eq!(step(&h), 3);
-        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::Num8);
-        h.run_steps(2);
-        assert_eq!(step(&h), 8);
-
-        // Bara laterală și ajutor
-        assert!(!h.state().settings.sidebar_closed);
-        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::B);
-        h.run_steps(2);
-        assert!(h.state().settings.sidebar_closed);
-        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::B);
-        h.run_steps(2);
-        assert!(!h.state().settings.sidebar_closed);
-        h.key_press(egui::Key::F1);
-        h.run_steps(2);
-        assert!(h.state().show_help);
-
-        // Buton desenat manual (paleta): focus + Enter alege instrumentul
-        h.key_press(egui::Key::F1);
-        h.run_steps(2);
-        assert!(!h.state().show_help);
-        h.get_by_role_and_label(egui::accesskit::Role::Button, "Tronson").focus();
-        h.run_steps(1);
-        h.key_press(egui::Key::Enter);
-        h.run_steps(2);
-        assert_eq!(h.state().net_ui.canvas.tool, crate::canvas::Tool::Tronson);
-
-        // Vedere 3D: săgeată dreapta rotește
-        h.state_mut().net_ui.show_3d = true;
-        h.run_steps(3);
-        let before = h.state().net_ui.view3d.yaw_for_test();
-        let canvas_label = h.state().t.t("view3d.a11yLabel");
-        h.get_by_role_and_label(egui::accesskit::Role::Canvas, &canvas_label).focus();
-        h.run_steps(1);
-        h.key_press(egui::Key::ArrowRight);
-        h.run_steps(2);
-        assert_ne!(h.state().net_ui.view3d.yaw_for_test(), before, "săgeata trebuie să rotească vederea");
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    /// Erorile rămân până sunt închise; mesajele obișnuite dispar; contrastul ridicat schimbă paleta.
-    #[test]
-    fn toasts_persist_and_high_contrast_applies() {
-        let dir = std::env::temp_dir().join(format!("hidrocalc-ac-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let db_path = dir.join("a.db");
-        let mut h = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1360.0, 900.0))
-            .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
-        sample(h.state_mut());
-        h.state_mut().toast("eroare de test", true);
-        h.state_mut().toast("salvat", false);
-        for t in &mut h.state_mut().toasts {
-            t.since = Instant::now() - Duration::from_secs(60);
-        }
-        h.run_steps(2);
-        let left: Vec<String> = h.state().toasts.iter().map(|t| t.text.clone()).collect();
-        assert_eq!(left, ["eroare de test"], "doar eroarea trebuie să rămână");
-
-        let ctx = h.ctx.clone();
-        let before = theme::palette(&ctx).ink;
-        let mut s = h.state().settings.clone();
-        s.high_contrast = true;
-        h.state_mut().set_settings(&ctx, s);
-        h.run_steps(2);
-        let after = theme::palette(&ctx).ink;
-        assert_ne!(before, after, "paleta cu contrast ridicat trebuie să difere");
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    /// Ștergerea unui tronson din tabel cere confirmare (al doilea click).
-    #[test]
-    fn deleting_a_section_needs_confirmation() {
-        use egui_kittest::kittest::Queryable;
-        let dir = std::env::temp_dir().join(format!("hidrocalc-dc-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let db_path = dir.join("d.db");
-        let mut h = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(2400.0, 1300.0)) // tabelul e lat: butonul de ștergere trebuie să încapă în fereastră
-            .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
-        sample(h.state_mut());
-        h.state_mut().project.as_mut().unwrap().current_step = 8;
-        h.run_steps(3);
-        let n = |h: &egui_kittest::Harness<'_, HidroApp>| h.state().project.as_ref().unwrap().network_sections.len();
-        let before = n(&h);
-        assert!(before >= 2);
-        let tip = h.state().t.t("common.delete");
-        h.get_all_by_label(&tip).next().expect("buton de ștergere").click();
-        h.run_steps(2);
-        assert_eq!(n(&h), before, "primul click doar cere confirmare");
-        let confirm = h.state().t.t("home.deleteConfirm");
-        h.get_all_by_label(&confirm).next().expect("buton de confirmare").click();
-        h.run_steps(2);
-        assert_eq!(n(&h), before - 1, "al doilea click șterge tronsonul");
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    /// Fereastra de ajutor/accesibilitate și contrastul ridicat (verificare vizuală).
-    #[test]
-    fn help_window_and_high_contrast_snapshot() {
-        let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/ui-snapshots");
-        std::fs::create_dir_all(&out).unwrap();
-        for (dark, hc) in [(false, false), (true, true), (false, true)] {
-            let dir = std::env::temp_dir().join(format!("hidrocalc-hw-{}", uuid::Uuid::new_v4()));
-            std::fs::create_dir_all(&dir).unwrap();
-            let db_path = dir.join("h.db");
-            let theme = if dark { egui::Theme::Dark } else { egui::Theme::Light };
-            let mut h = egui_kittest::Harness::builder()
-                .with_size(egui::vec2(1360.0, 900.0))
-                .with_theme(theme)
-                .wgpu()
-                .build_eframe(|cc| HidroApp::with_db(cc, Settings { dark, high_contrast: hc, ..Default::default() }, Db::open(&db_path)));
-            sample(h.state_mut());
-            h.state_mut().project.as_mut().unwrap().current_step = 4;
-            h.state_mut().show_help = true;
-            h.run_steps(4);
-            h.render().unwrap().save(out.join(format!("help-{}{}.png", if dark { "dark" } else { "light" }, if hc { "-hc" } else { "" }))).unwrap();
-            let _ = std::fs::remove_dir_all(dir);
-        }
-    }
-
-    /// Responsive minimal: conținutul umple spațiul (nu sare), iar sub 1100 px bara laterală se ascunde singură.
-    #[test]
-    fn layout_adapts_to_width_and_sidebar() {
-        use egui_kittest::kittest::Queryable;
-        let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/ui-snapshots");
-        std::fs::create_dir_all(&out).unwrap();
-        let title_x = |h: &egui_kittest::Harness<'_, HidroApp>| h.get_by_label_contains("Debite ale necesarului").rect().min.x;
-        let mk = |w: f32| {
-            let dir = std::env::temp_dir().join(format!("hidrocalc-rw-{}", uuid::Uuid::new_v4()));
-            std::fs::create_dir_all(&dir).unwrap();
-            let db_path = dir.join("r.db");
-            let mut h = egui_kittest::Harness::builder()
-                .with_size(egui::vec2(w, 800.0))
-                .with_theme(egui::Theme::Light)
-                .wgpu()
-                .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
-            sample(h.state_mut());
-            h.state_mut().project.as_mut().unwrap().current_step = 3;
-            h.run_steps(3);
-            (h, dir)
-        };
-        // 1360: bara deschisă, apoi ascunsă — conținutul pornește de la marginea disponibilă, fără salt în gol
-        let (mut h, d1) = mk(1360.0);
-        let open_x = title_x(&h);
-        assert!(open_x >= 270.0 && open_x < 330.0, "cu bara deschisă conținutul începe lângă ea: {open_x}");
-        h.render().unwrap().save(out.join("responsive-1360-open.png")).unwrap();
-        h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::B);
-        h.run_steps(3);
-        let closed_x = title_x(&h);
-        assert!(closed_x < 60.0, "cu bara ascunsă conținutul umple lățimea: {closed_x}");
-        h.render().unwrap().save(out.join("responsive-1360-closed.png")).unwrap();
-        // 1000 px: bara nu se mai ascunde singură; butonul/Cmd+B o ascund și o arată, la orice mărime
-        let (mut h2, d2) = mk(1000.0);
-        assert!(h2.state().sidebar_visible(&h2.ctx.clone()), "bara laterală nu se ascunde automat");
-        h2.render().unwrap().save(out.join("responsive-1000.png")).unwrap();
-        h2.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::B);
-        h2.run_steps(3);
-        assert!(!h2.state().sidebar_visible(&h2.ctx.clone()));
-        h2.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::B);
-        h2.run_steps(3);
-        assert!(h2.state().sidebar_visible(&h2.ctx.clone()));
-        h2.state_mut().project.as_mut().unwrap().current_step = 2;
-        h2.run_steps(3);
-        h2.render().unwrap().save(out.join("responsive-step2-1000.png")).unwrap();
-        // Interfață mărită (zoom 1.6 => ~625 pt lățime): butonul de ascundere merge în continuare
-        let ctx = h2.ctx.clone();
-        let mut s = h2.state().settings.clone();
-        s.ui_scale_pct = 160;
-        h2.state_mut().set_settings(&ctx, s);
-        h2.run_steps(3);
-        h2.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::B);
-        h2.run_steps(3);
-        assert!(!h2.state().sidebar_visible(&ctx), "comutarea barei merge și când interfața e mare");
-        h2.render().unwrap().save(out.join("responsive-1000-zoom160.png")).unwrap();
-        for d in [d1, d2] {
-            let _ = std::fs::remove_dir_all(d);
-        }
-    }
-
-    /// Comutatorul de limbă (buton ca cel de temă) trece RO ↔ EN.
-    #[test]
-    fn language_switch_toggles_between_ro_and_en() {
-        use egui_kittest::kittest::Queryable;
-        let dir = std::env::temp_dir().join(format!("hidrocalc-ls-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let db_path = dir.join("l.db");
-        let mut h = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1360.0, 900.0))
-            .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
-        sample(h.state_mut());
-        h.run_steps(2);
-        assert_eq!(h.state().settings.lang, Lang::Ro);
-        h.get_by_role_and_label(egui::accesskit::Role::Button, "Switch to English").click();
-        h.run_steps(2);
-        assert_eq!(h.state().settings.lang, Lang::En);
-        h.get_by_role_and_label(egui::accesskit::Role::Button, "Treci la română").click();
-        h.run_steps(2);
-        assert_eq!(h.state().settings.lang, Lang::Ro);
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    /// Desen și editare fără mouse în planul 2D: tronson din tastatură, selectare și mutare.
-    #[test]
-    fn canvas_keyboard_draw_select_and_move() {
-        use egui_kittest::kittest::Queryable;
-        let dir = std::env::temp_dir().join(format!("hidrocalc-kc-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let db_path = dir.join("c.db");
-        let mut h = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1360.0, 900.0))
-            .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
-        sample(h.state_mut());
-        h.state_mut().project.as_mut().unwrap().current_step = 8;
-        h.run_steps(3);
-        let count = |h: &egui_kittest::Harness<'_, HidroApp>| h.state().project.as_ref().unwrap().network_schema.len();
-        let before = count(&h);
-        let label = h.state().t.t("canvas.a11yLabel");
-        h.get_by_role_and_label(egui::accesskit::Role::Canvas, &label).focus();
-        h.run_steps(1);
-
-        // L = tronson; Enter = început; săgeți; Enter = sfârșit
-        h.key_press(egui::Key::L);
-        h.run_steps(1);
-        assert_eq!(h.state().net_ui.canvas.tool, crate::canvas::Tool::Tronson);
-        h.key_press(egui::Key::Enter);
-        h.run_steps(1);
-        for _ in 0..8 {
-            h.key_press(egui::Key::ArrowRight);
-            h.run_steps(1);
-        }
-        h.key_press(egui::Key::Enter);
-        h.run_steps(2);
-        assert_eq!(count(&h), before + 1, "tronsonul făcut din tastatură trebuie adăugat");
-
-        // V = Select; PageDown alege un element; săgeata dreapta îl mută
-        h.key_press(egui::Key::V);
-        h.run_steps(1);
-        h.key_press(egui::Key::PageDown);
-        h.run_steps(1);
-        let sel = h.state().net_ui.canvas.selected.clone().expect("element ales");
-        let x_of = |h: &egui_kittest::Harness<'_, HidroApp>| h.state().project.as_ref().unwrap().network_schema.iter().find(|e| e.id == sel).map(|e| e.x).unwrap();
-        let x0 = x_of(&h);
-        h.key_press(egui::Key::ArrowRight);
-        h.run_steps(2);
-        assert!((x_of(&h) - x0 - 10.0).abs() < 1e-6, "elementul trebuie să se mute cu 10");
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    /// Cum arată focusul de la tastatură pe butoane (verificare vizuală).
-    #[test]
-    fn focus_ring_snapshot() {
-        use egui_kittest::kittest::Queryable;
-        let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/ui-snapshots");
-        std::fs::create_dir_all(&out).unwrap();
-        let dir = std::env::temp_dir().join(format!("hidrocalc-fr-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let db_path = dir.join("f.db");
-        let mut h = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1360.0, 900.0))
-            .with_theme(egui::Theme::Light)
-            .wgpu()
-            .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
-        sample(h.state_mut());
-        h.state_mut().project.as_mut().unwrap().current_step = 8;
-        h.run_steps(3);
-        h.get_by_role_and_label(egui::accesskit::Role::Button, "Hidrant").focus();
-        h.run_steps(2);
-        h.render().unwrap().save(out.join("focus-tool-button.png")).unwrap();
-        h.get_by_role_and_label(egui::accesskit::Role::Button, "⌂  Acasă").focus();
-        h.run_steps(2);
-        h.render().unwrap().save(out.join("focus-std-button.png")).unwrap();
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    /// Comutatoarele de temă/limbă din bara laterală, în ambele teme și după comutare (verificare vizuală).
-    #[test]
-    fn theme_toggle_snapshot() {
-        use egui_kittest::kittest::Queryable;
-        let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/ui-snapshots");
-        std::fs::create_dir_all(&out).unwrap();
-        let dir = std::env::temp_dir().join(format!("hidrocalc-tt-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let db_path = dir.join("t.db");
-        let mut h = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1360.0, 900.0))
-            .with_theme(egui::Theme::Light)
-            .wgpu()
-            .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
-        sample(h.state_mut());
-        h.state_mut().project.as_mut().unwrap().current_step = 3;
-        h.run_steps(3);
-        h.render().unwrap().save(out.join("toggle-1-light.png")).unwrap();
-        h.get_by_role_and_label(egui::accesskit::Role::Button, "Comută la dark mode").click();
-        h.run_steps(1);
-        h.render().unwrap().save(out.join("toggle-2-after-click.png")).unwrap();
-        h.run_steps(4);
-        h.render().unwrap().save(out.join("toggle-3-dark.png")).unwrap();
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    /// Coada de exporturi (fără dialoguri): fișierele ajung în folder, PNG-urile din captura pasului 8.
-    #[test]
-    fn export_job_writes_all_files_and_returns_to_step_9() {
-        let dir = std::env::temp_dir().join(format!("hidrocalc-exp-{}", uuid::Uuid::new_v4()));
-        let out = dir.join("out");
-        std::fs::create_dir_all(&out).unwrap();
-        let db_path = dir.join("e.db");
-        let mut h = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1360.0, 880.0))
-            .wgpu()
-            .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
-        sample(h.state_mut());
-        h.state_mut().project.as_mut().unwrap().current_step = 9;
-        h.run_steps(2);
-        let ids = [ExportId::Json, ExportId::Dxf2d, ExportId::Dxf3d, ExportId::Glb, ExportId::Stl, ExportId::DocMemoriu, ExportId::Png2d, ExportId::Png3d];
-        h.state_mut().export_job = Some(ExportJob {
-            folder: Some(out.clone()),
-            queue: ids.into_iter().collect(),
-            ok: Vec::new(),
-            errs: Vec::new(),
-            cap: None,
-            restore: (9, false),
-        });
-        for _ in 0..400 {
-            h.run_steps(1);
-            std::thread::sleep(std::time::Duration::from_millis(15));
-            if h.state().export_job.is_none() {
-                break;
-            }
-        }
-        assert!(h.state().export_job.is_none(), "exportul nu s-a terminat");
-        assert_eq!(h.state().project.as_ref().unwrap().current_step, 9, "trebuie să revină la pasul 9");
-        let mut names: Vec<String> = std::fs::read_dir(&out).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
-        names.sort();
-        assert_eq!(names.len(), 8, "{names:?}");
-        for n in &names {
-            let len = std::fs::metadata(out.join(n)).unwrap().len();
-            assert!(len > 100, "{n} e prea mic ({len} B)");
-        }
-        let png = std::fs::read(out.join(names.iter().find(|n| n.contains("plan 2D") && n.ends_with(".png")).unwrap())).unwrap();
-        assert_eq!(&png[1..4], b"PNG");
-        if let Ok(dest) = std::env::var("HIDRO_EXP_OUT") {
-            for n in &names {
-                std::fs::copy(out.join(n), std::path::Path::new(&dest).join(n)).unwrap();
-            }
-        }
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    /// Necesită internet (dale OSM reale): `cargo test -p hidrocalc map_snapshot -- --ignored`.
-    #[test]
-    #[ignore]
-    fn map_snapshot() {
-        let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/ui-snapshots");
-        std::fs::create_dir_all(&out).unwrap();
-        let dir = std::env::temp_dir().join(format!("hidrocalc-map-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let db_path = dir.join("m.db");
-        let mut h = egui_kittest::Harness::builder()
-            .with_size(egui::vec2(1360.0, 880.0))
-            .with_theme(egui::Theme::Light)
-            .wgpu()
-            .build_eframe(|cc| HidroApp::with_db(cc, Settings::default(), Db::open(&db_path)));
-        sample(h.state_mut());
-        {
-            let p = h.state_mut().project.as_mut().unwrap();
-            // Ancoră în Timișoara (Piața Victoriei), la capătul amonte al lui Tr1.
-            let a = hidro_core::geo::MapAnchor {
-                lat: 45.7537,
-                lng: 21.2257,
-                world_x: 0.0,
-                world_y: 0.0,
-                tile_zoom: hidro_core::geo::compute_tile_zoom(45.7537, 1000.0),
-            };
-            let o = p.network_canvas_settings.as_object_mut().unwrap();
-            o.insert("mapAnchor".into(), serde_json::to_value(a).unwrap());
-            o.insert("autoTerrainCota".into(), serde_json::json!(false));
-            p.current_step = 8;
-        }
-        for _ in 0..80 {
-            h.run_steps(2);
-            std::thread::sleep(std::time::Duration::from_millis(100));
-        }
-        h.render().unwrap().save(out.join("step8-map.png")).unwrap();
-        h.state_mut().net_ui.canvas.map.open = true;
-        h.run_steps(4);
-        h.render().unwrap().save(out.join("step8-map-panel.png")).unwrap();
-        // 3D cu terenul DEM real
-        h.state_mut().net_ui.show_3d = true;
-        for _ in 0..100 {
-            h.run_steps(2);
-            std::thread::sleep(std::time::Duration::from_millis(100));
-        }
-        h.render().unwrap().save(out.join("step8-3d-terrain.png")).unwrap();
-        let _ = std::fs::remove_dir_all(dir);
-    }
-}
+mod snapshots;

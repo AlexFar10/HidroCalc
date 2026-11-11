@@ -7,9 +7,8 @@
 use crate::i18n::I18n;
 use crate::widgets::{self as w, pal};
 use eframe::egui::{self, Align2, Color32, CornerRadius, FontId, Pos2, Rect, RichText, Sense, Shape, Stroke, Ui, Vec2};
-use hidro_core::calculations::network::NetworkSection;
 use hidro_core::model::{ProjectData, SchemaElement, SchemaKind};
-use hidro_core::schema::meters_per_px;
+use hidro_core::schema::{self, meters_per_px};
 use serde_json::{json, Value};
 
 const ZOOM_MIN: f32 = 0.05;
@@ -17,12 +16,13 @@ const ZOOM_MAX: f32 = 40.0;
 const SNAP_PX: f32 = 14.0;
 const HIT_PX: f32 = 10.0;
 const DOT_R: f32 = 7.0;
-const BOX_W: f32 = 52.0;
-const BOX_H: f32 = 52.0;
-const CIRCLE_R: f32 = 10.0;
+// Dimensiunile simbolurilor sunt cele din `hidro_core::schema` (comune cu topologia și DXF-ul).
+const BOX_W: f32 = schema::BOX_W as f32;
+const BOX_H: f32 = schema::BOX_H as f32;
+const CIRCLE_R: f32 = schema::CIRCLE_R as f32;
 const ARROW_SZ: f32 = 14.0;
-const SUB_W: f32 = 180.0;
-const SUB_H: f32 = 100.0;
+const SUB_W: f32 = schema::SUB_W as f32;
+const SUB_H: f32 = schema::SUB_H as f32;
 const UNDO_MAX: usize = 60;
 
 const fn rgb(c: u32) -> Color32 {
@@ -231,8 +231,10 @@ pub struct CanvasUi {
     active_sub: Option<String>,
     /// Snapshot luat la începutul unei tragere, împins în istoric doar dacă s-a schimbat ceva.
     pending_undo: Option<Vec<SchemaElement>>,
+    /// Elementul mutat cu săgețile: o serie de apăsări consumă un singur pas de anulare.
+    kb_move_id: Option<String>,
     fitted: bool,
-    /// Cerere de export DXF din bara de unelte (preluată de pasul 8).
+    /// Dalele hărții de fundal (create la prima ancorare a hărții).
     tiles: Option<crate::tiles::TileCache>,
     pub map: crate::map_ui::MapWindow,
     last_rect: Rect,
@@ -262,6 +264,7 @@ impl Default for CanvasUi {
             undo: Vec::new(),
             active_sub: None,
             pending_undo: None,
+            kb_move_id: None,
             fitted: false,
             tiles: None,
             map: Default::default(),
@@ -286,12 +289,7 @@ fn setting_bool(p: &ProjectData, key: &str, default: bool) -> bool {
     p.network_canvas_settings.get(key).and_then(Value::as_bool).unwrap_or(default)
 }
 fn set_setting(p: &mut ProjectData, key: &str, v: Value) {
-    if !p.network_canvas_settings.is_object() {
-        p.network_canvas_settings = hidro_core::model::default_canvas_settings();
-    }
-    if let Some(o) = p.network_canvas_settings.as_object_mut() {
-        o.insert(key.into(), v);
-    }
+    p.network_canvas_settings.set(key, v);
 }
 
 pub fn scale_ratio(p: &ProjectData) -> f64 {
@@ -322,28 +320,7 @@ fn dist_to_segment(p: Pos2, a: Pos2, b: Pos2) -> f32 {
 }
 
 fn sub_ports(el: &SchemaElement) -> Vec<(Pos2, bool)> {
-    let w = el.w.map_or(SUB_W, |v| v as f32);
-    let h = el.h.map_or(SUB_H, |v| v as f32);
-    let (bx, by) = (el.x as f32 - w / 2.0, el.y as f32 - h / 2.0);
-    let sides: Vec<bool> = match &el.ports {
-        Some(ports) => ports.iter().map(|p| p.get("side").and_then(Value::as_str) == Some("L")).collect(),
-        None => vec![true, false],
-    };
-    let nl = sides.iter().filter(|l| **l).count();
-    let nr = sides.len() - nl;
-    let (mut il, mut ir) = (0, 0);
-    sides
-        .into_iter()
-        .map(|left| {
-            if left {
-                il += 1;
-                (Pos2::new(bx, by + h / (nl + 1) as f32 * il as f32), true)
-            } else {
-                ir += 1;
-                (Pos2::new(bx + w, by + h / (nr + 1) as f32 * ir as f32), false)
-            }
-        })
-        .collect()
+    schema::subsystem_ports(el).into_iter().map(|(x, y, left)| (Pos2::new(x as f32, y as f32), left)).collect()
 }
 
 /// Punctele la care se pot lega capetele tronsoanelor.
@@ -465,7 +442,7 @@ fn prefix(kind: SchemaKind) -> &'static str {
 
 fn next_label(kind: SchemaKind, level: &[SchemaElement]) -> Option<String> {
     let p = prefix(kind);
-    (!p.is_empty()).then(|| format!("{p} {}", level.iter().filter(|e| e.kind == kind).count() + 1))
+    (!p.is_empty()).then(|| schema::next_free_label(p, level, kind))
 }
 
 fn format_dist(m: f64) -> String {
@@ -491,6 +468,7 @@ impl CanvasUi {
     }
 
     fn checkpoint(&mut self, p: &ProjectData) {
+        self.kb_move_id = None;
         self.undo.push(p.network_schema.clone());
         if self.undo.len() > UNDO_MAX {
             self.undo.remove(0);
@@ -715,7 +693,10 @@ impl CanvasUi {
             if (dx != 0.0 || dy != 0.0) && !alt && selected.is_some() {
                 // Element ales: săgețile îl mută (Shift = pas mare); cu Alt se deplasează vederea.
                 let step = if shift { 50.0 } else { 10.0 };
-                self.checkpoint(p);
+                if self.kb_move_id != selected {
+                    self.checkpoint(p);
+                    self.kb_move_id = selected.clone();
+                }
                 if let Some(e) = self.level(p).iter_mut().find(|e| Some(&e.id) == selected.as_ref()) {
                     e.x += (dx * step) as f64;
                     e.y += (dy * step) as f64;
@@ -852,9 +833,11 @@ impl CanvasUi {
         self.interact(ui, &resp, rect, p);
         self.paint(ui, rect, p, &resp);
         w::focus_ring(ui, &resp, 10);
-        w::describe(&resp, egui::Role::Canvas, &t.t("canvas.a11yLabel"));
+        w::describe(&resp, egui::Role::Canvas, t.t("canvas.a11yLabel"));
         crate::map_ui::info_bar(ui, t, p);
         self.properties(ui, t, p);
+        // Numele tronsoanelor de calcul urmează etichetele din desen.
+        schema::sync_section_names(&p.network_schema, &mut p.network_sections);
         // Ancora nouă se pune în punctul din centrul vederii curente.
         let center = self.to_world(rect.min, rect.center());
         let live = crate::map_ui::View { origin: rect.min, pan: self.pan, zoom: self.zoom };
@@ -865,13 +848,13 @@ impl CanvasUi {
     pub fn palette(&mut self, ui: &mut Ui, t: &I18n, p: &mut ProjectData) {
         ui.spacing_mut().item_spacing = Vec2::new(4.0, 4.0);
 
-        w::section_title(ui, &t.t("native.drawTools"));
+        w::section_title(ui, t.t("native.drawTools"));
         for pair in Tool::ALL.chunks(2) {
             ui.columns(2, |c| {
                 for (i, (tool, key)) in pair.iter().enumerate() {
                     let short = if matches!(tool, Tool::Rezervor | Tool::Sursa) { key.to_string() } else { format!("{key}Short") };
                     let tool = *tool;
-                    let resp = w::tool_button_icon(&mut c[i], &t.t(&format!("canvas.tools.{short}")), self.tool == tool, |p, ctr, col| paint_tool_icon(p, ctr, tool, col));
+                    let resp = w::tool_button_icon(&mut c[i], t.t(&format!("canvas.tools.{short}")), self.tool == tool, |p, ctr, col| paint_tool_icon(p, ctr, tool, col));
                     if resp.on_hover_text(format!("{} ({})", t.t(&format!("canvas.tools.{key}")), tool.shortcut_key().name())).clicked() {
                         self.tool = tool;
                     }
@@ -880,7 +863,7 @@ impl CanvasUi {
         }
 
         ui.add_space(10.0);
-        w::section_title(ui, &t.t("native.viewTools"));
+        w::section_title(ui, t.t("native.viewTools"));
         ui.columns(3, |c| {
             let can_undo = !self.undo.is_empty();
             if c[0].add_enabled_ui(can_undo, |ui| w::tool_button_w(ui, "↶", false)).inner.on_hover_text(t.t("canvas.undoTitle")).clicked() {
@@ -898,8 +881,8 @@ impl CanvasUi {
         }
 
         ui.add_space(10.0);
-        w::section_title(ui, &t.t("native.mapButton"));
-        if w::tool_button_w(ui, &t.t("native.mapButton"), self.map.open).clicked() {
+        w::section_title(ui, t.t("native.mapButton"));
+        if w::tool_button_w(ui, t.t("native.mapButton"), self.map.open).clicked() {
             if self.map.open {
                 self.map.open = false;
             } else {
@@ -910,18 +893,18 @@ impl CanvasUi {
         self.map.panel(ui, t, p);
 
         ui.add_space(10.0);
-        w::section_title(ui, &t.t("native.scaleGrid"));
+        w::section_title(ui, t.t("native.scaleGrid"));
         let sr = scale_ratio(p);
         let opts: Vec<(String, String)> = SCALE_PRESETS.iter().map(|r| (format!("{r}"), format!("1:{r}"))).collect();
         let mut cur = format!("{sr}");
-        if w::combo(ui, &t.t("canvas.scale"), &mut cur, &opts) {
+        if w::combo(ui, t.t("canvas.scale"), &mut cur, &opts) {
             if let Ok(v) = cur.parse::<f64>() {
                 set_setting(p, "scaleRatio", json!(v));
             }
         }
         ui.add_space(4.0);
         for (key, label) in [("gridVisible", "canvas.grid"), ("snapToGrid", "native.snapGrid"), ("snapToEndpoints", "canvas.snap")] {
-            let mut v = setting_bool(p, key, key == "snapToEndpoints");
+            let mut v = setting_bool(p, key, false);
             if ui.checkbox(&mut v, RichText::new(t.t(label)).size(12.5)).changed() {
                 set_setting(p, key, json!(v));
             }
@@ -931,7 +914,7 @@ impl CanvasUi {
             let gs = setting_f64(p, "gridSpacing", 10.0);
             let opts: Vec<(String, String)> = GRID_SPACINGS.iter().map(|g| (format!("{g}"), format!("{g} m"))).collect();
             let mut cur = format!("{gs}");
-            if w::combo(ui, &t.t("canvas.gridStep"), &mut cur, &opts) {
+            if w::combo(ui, t.t("canvas.gridStep"), &mut cur, &opts) {
                 if let Ok(v) = cur.parse::<f64>() {
                     set_setting(p, "gridSpacing", json!(v));
                 }
@@ -960,6 +943,7 @@ impl CanvasUi {
 
     fn undo_once(&mut self, p: &mut ProjectData) {
         if let Some(prev) = self.undo.pop() {
+            self.kb_move_id = None;
             p.network_schema = prev;
             self.selected = None;
             if let Some(id) = &self.active_sub {
@@ -1200,11 +1184,9 @@ impl CanvasUi {
 
         if self.active_sub.is_none() {
             if let Some(a) = crate::map_ui::anchor(p) {
-                crate::map_ui::draw_topo(&painter, view, &a, crate::map_ui::rotation(p), &crate::map_ui::topo_points(p));
+                crate::map_ui::draw_topo(&painter, view, &a, crate::map_ui::rotation(p), crate::map_ui::topo_points(p));
             }
         }
-        let q_by_name: std::collections::HashMap<&str, f64> =
-            p.network_sections.iter().filter(|s| s.group.is_none()).map(|s: &NetworkSection| (s.name.as_str(), s.q_c)).collect();
         let level: Vec<SchemaElement> = match &self.active_sub {
             Some(id) => p.network_schema.iter().find(|e| &e.id == id).and_then(|e| e.children.clone()).unwrap_or_default(),
             None => p.network_schema.clone(),
@@ -1218,7 +1200,7 @@ impl CanvasUi {
             match el.kind {
                 SchemaKind::Tronson => {
                     let base = parse_color(el.color.as_deref()).unwrap_or(c_tronson());
-                    let q = if self.active_sub.is_none() { el.label.as_deref().and_then(|l| q_by_name.get(l).copied()) } else { None };
+                    let q = schema::section_for(el, &p.network_sections).map(|s| s.q_c);
                     draw_tronson(&painter, el, sp, sc, vs, z, mpp, if sel { c_selected() } else { base }, sel, q, off);
                 }
                 SchemaKind::Rezervor | SchemaKind::Sursa => {
@@ -1399,7 +1381,7 @@ impl CanvasUi {
                         el.label_offset_x = None;
                         el.label_offset_y = None;
                     }
-                    if w::danger_button(ui, &t.t("common.delete"), false).clicked() {
+                    if w::danger_button(ui, t.t("common.delete"), false).clicked() {
                         delete = true;
                     }
                 });

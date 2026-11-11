@@ -270,7 +270,7 @@ impl Ctx<'_> {
                     }
                 }
                 (_, Some(ts)) => {
-                    let (idx, t) = tags[ti];
+                    let (_, t) = tags[ti];
                     out.push_str(&self.xml[pos..ts]);
                     if t.kind == ' ' {
                         match lookup(scopes, &t.name) {
@@ -282,7 +282,6 @@ impl Ctx<'_> {
                             }
                         }
                     }
-                    let _ = idx;
                     pos = t.end;
                     ti += 1;
                 }

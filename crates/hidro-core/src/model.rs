@@ -9,8 +9,11 @@
 //!   deci un proiect deschis aici nu pierde date pe care această versiune încă nu
 //!   le editează (schema rețelei, setările canvas-ului etc.).
 
-use serde::{Deserialize, Serialize};
 use crate::calculations::network::NetworkSection;
+use crate::geo::MapAnchor;
+use crate::scene3d::TerrainGrid;
+use crate::topo::TopoPoint;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 pub type Extra = Map<String, Value>;
@@ -347,7 +350,8 @@ pub struct ProjectData {
     /// Schema rețelei desenată pe canvas (pasul 8).
     pub network_schema: Vec<SchemaElement>,
     pub network_drawing: Value,
-    pub network_canvas_settings: Value,
+    #[serde(deserialize_with = "lenient")]
+    pub network_canvas_settings: CanvasSettings,
     #[serde(flatten)]
     pub extra: Extra,
 }
@@ -369,15 +373,15 @@ impl Default for ProjectData {
             network_sections: Vec::new(),
             network_schema: Vec::new(),
             network_drawing: Value::Array(Vec::new()),
-            network_canvas_settings: default_canvas_settings(),
+            network_canvas_settings: CanvasSettings::default(),
             extra: Extra::new(),
         }
     }
 }
 
 /// Setările implicite ale canvas-ului (identice cu `createDefaultProject()` din aplicația React).
-pub fn default_canvas_settings() -> Value {
-    serde_json::json!({
+fn default_canvas_settings() -> Extra {
+    let v = serde_json::json!({
         "scaleRatio": 1000,
         "unit": "m",
         "gridVisible": false,
@@ -394,7 +398,69 @@ pub fn default_canvas_settings() -> Value {
         "mapLockPan": false,
         "mapLockZoom": false,
         "mapLockRotation": false
-    })
+    });
+    match v {
+        Value::Object(m) => m,
+        _ => Extra::new(),
+    }
+}
+
+/// Citire tolerantă: o valoare cu formă neașteptată (ex. `null` dintr-un proiect vechi)
+/// devine valoarea implicită, în loc să facă tot proiectul de necitit.
+fn lenient<'de, D, T>(d: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::de::DeserializeOwned + Default,
+{
+    let v = Value::deserialize(d)?;
+    Ok(serde_json::from_value(v).unwrap_or_default())
+}
+
+/// Setările canvas-ului (`networkCanvasSettings`).
+///
+/// Datele mari, citite la fiecare cadru — ancora hărții, punctele topo, grila de teren —
+/// sunt câmpuri tipizate (fără deserializare la fiecare citire). Restul setărilor, mici,
+/// rămân chei JSON (`get` / `set`), deci cele necunoscute se păstrează neschimbate.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CanvasSettings {
+    #[serde(deserialize_with = "lenient", skip_serializing_if = "Option::is_none")]
+    pub map_anchor: Option<MapAnchor>,
+    #[serde(deserialize_with = "lenient", skip_serializing_if = "Vec::is_empty")]
+    pub topo_points: Vec<TopoPoint>,
+    #[serde(deserialize_with = "lenient", skip_serializing_if = "Option::is_none")]
+    pub terrain_grid: Option<TerrainGrid>,
+    #[serde(flatten)]
+    other: Extra,
+}
+
+impl Default for CanvasSettings {
+    fn default() -> Self {
+        Self { map_anchor: None, topo_points: Vec::new(), terrain_grid: None, other: default_canvas_settings() }
+    }
+}
+
+impl CanvasSettings {
+    /// O setare simplă (număr, bifă, obiect mic), după cheia ei JSON.
+    pub fn get(&self, key: &str) -> Option<&Value> {
+        self.other.get(key)
+    }
+
+    /// Scrie o setare după cheia ei JSON; `null` o șterge. Cheile datelor tipizate
+    /// (`mapAnchor`, `topoPoints`, `terrainGrid`) ajung în câmpurile lor.
+    pub fn set(&mut self, key: &str, v: Value) {
+        match key {
+            "mapAnchor" => self.map_anchor = serde_json::from_value(v).ok(),
+            "topoPoints" => self.topo_points = serde_json::from_value(v).unwrap_or_default(),
+            "terrainGrid" => self.terrain_grid = serde_json::from_value(v).ok(),
+            _ if v.is_null() => {
+                self.other.remove(key);
+            }
+            _ => {
+                self.other.insert(key.into(), v);
+            }
+        }
+    }
 }
 
 impl ProjectData {
@@ -454,26 +520,17 @@ impl ProjectData {
             && o["consumers"].get("publicConsumers").is_some_and(Value::is_array)
             && o["networkSections"].as_array().is_some_and(|a| a.iter().all(Value::is_object))
     }
+}
 
-    /// Bifele de completare ale celor 9 pași (identice cu `getStepCompletion`).
-    pub fn step_completion(&self) -> [bool; 9] {
-        let g = &self.general;
-        let c = &self.consumers;
-        let h = &self.hydrants;
-        let r = &self.reservoir;
-        let hyd = h.debit_hydrant > 0.0 && h.operating_time > 0.0;
-        [
-            !g.name.trim().is_empty() && !g.locality.trim().is_empty(),
-            c.inhabitants > 0.0,
-            c.inhabitants > 0.0,
-            self.water_demand_coefficients.kp > 0.0,
-            hyd,
-            hyd,
-            r.i_med > 0.0 && r.l > 0.0,
-            !self.network_sections.is_empty(),
-            true,
-        ]
-    }
+/// Versiunea formatului de export JSON (se mărește când structura documentului se schimbă).
+pub const EXPORT_FORMAT: u32 = 1;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExportImportError {
+    /// Fișierul nu este un proiect HidroCalc valid.
+    Invalid,
+    /// Fișier făcut de o versiune mai nouă a aplicației (numărul formatului).
+    NewerFormat(u64),
 }
 
 #[cfg(test)]
@@ -500,17 +557,38 @@ mod tests {
         assert_eq!(back["networkSchema"][0]["type"], "tronson");
         assert_eq!(back["reservoir"]["dimPlatformaBetonatal"], 3.0);
     }
-}
 
-/// Versiunea formatului de export JSON (se mărește când structura documentului se schimbă).
-pub const EXPORT_FORMAT: u32 = 1;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ExportImportError {
-    /// Fișierul nu este un proiect HidroCalc valid.
-    Invalid,
-    /// Fișier făcut de o versiune mai nouă a aplicației (numărul formatului).
-    NewerFormat(u64),
+    /// Setările canvasului: datele mari sunt tipizate, cheile necunoscute și cele simple se
+    /// păstrează, iar valorile cu formă greșită nu strică citirea proiectului.
+    #[test]
+    fn canvas_settings_are_typed_lenient_and_lossless() {
+        let src = serde_json::json!({
+            "id": "x", "general": {}, "consumers": {}, "hydrants": {}, "reservoir": {},
+            "networkCanvasSettings": {
+                "scaleRatio": 500, "viitor": [1, 2],
+                "mapAnchor": { "lat": 45.7, "lng": 21.2, "worldX": 1.0, "worldY": 2.0, "tileZoom": 16.5 },
+                "topoPoints": [{ "id": "t", "lat": 45.7, "lng": 21.2, "z": 91.5 }],
+                "terrainGrid": null
+            }
+        });
+        let p: ProjectData = serde_json::from_value(src).unwrap();
+        let cs = &p.network_canvas_settings;
+        assert_eq!(cs.map_anchor.map(|a| a.tile_zoom), Some(16.5));
+        assert_eq!((cs.topo_points.len(), cs.terrain_grid.is_none()), (1, true));
+        assert_eq!(cs.get("scaleRatio").and_then(Value::as_f64), Some(500.0));
+        let back = serde_json::to_value(&p).unwrap();
+        assert_eq!(back["networkCanvasSettings"]["viitor"], serde_json::json!([1, 2]));
+        assert_eq!(back["networkCanvasSettings"]["topoPoints"][0]["z"], 91.5);
+        assert_eq!(serde_json::from_value::<ProjectData>(back).unwrap(), p);
+        // Setări care nu sunt un obiect (proiect stricat): se revine la cele implicite.
+        let broken = serde_json::json!({ "id": "y", "networkCanvasSettings": "x", "networkSchema": [] });
+        let q: ProjectData = serde_json::from_value(broken).unwrap();
+        assert_eq!(q.network_canvas_settings, CanvasSettings::default());
+        let mut cs = CanvasSettings::default();
+        cs.set("pipeDepth", serde_json::json!(1.4));
+        cs.set("pipeDepth", Value::Null);
+        assert!(cs.get("pipeDepth").is_none());
+    }
 }
 
 #[cfg(test)]

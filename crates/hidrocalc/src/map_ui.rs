@@ -5,7 +5,7 @@ use crate::i18n::I18n;
 use crate::tiles::{TileCache, USER_AGENT};
 use crate::widgets::{self as w, pal};
 use eframe::egui::{self, Align2, Color32, FontId, Mesh, Pos2, Rect, RichText, Stroke, Ui, Vec2};
-use hidro_core::geo::{self, compute_tile_zoom, lat_to_osm_py, latlng_to_world, lng_to_osm_px, MapAnchor, TILE_SIZE};
+use hidro_core::geo::{compute_tile_zoom, lat_to_osm_py, latlng_to_world, lng_to_osm_px, MapAnchor, TILE_SIZE};
 use hidro_core::model::ProjectData;
 use hidro_core::topo::{self, Crs, TopoPoint};
 use serde_json::{json, Value};
@@ -17,7 +17,7 @@ const TOPO_COLOR: Color32 = Color32::from_rgb(0x4E, 0x8F, 0x6E);
 // ─── Setări din `networkCanvasSettings` ──────────────────────────────────────
 
 pub fn anchor(p: &ProjectData) -> Option<MapAnchor> {
-    p.network_canvas_settings.get("mapAnchor").and_then(|v| serde_json::from_value(v.clone()).ok())
+    p.network_canvas_settings.map_anchor
 }
 pub fn rotation(p: &ProjectData) -> f64 {
     p.network_canvas_settings.get("mapRotation").and_then(Value::as_f64).unwrap_or(0.0)
@@ -52,23 +52,14 @@ pub fn map_view(p: &ProjectData, live: View) -> View {
 pub fn auto_terrain(p: &ProjectData) -> bool {
     p.network_canvas_settings.get("autoTerrainCota").and_then(Value::as_bool) != Some(false)
 }
-pub fn topo_points(p: &ProjectData) -> Vec<TopoPoint> {
-    p.network_canvas_settings.get("topoPoints").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default()
+pub fn topo_points(p: &ProjectData) -> &[TopoPoint] {
+    &p.network_canvas_settings.topo_points
 }
 pub fn topo_radius(p: &ProjectData) -> f64 {
     p.network_canvas_settings.get("topoRadius").and_then(Value::as_f64).unwrap_or(hidro_core::terrain::DEFAULT_TOPO_RADIUS_M)
 }
 fn set(p: &mut ProjectData, key: &str, v: Value) {
-    if !p.network_canvas_settings.is_object() {
-        p.network_canvas_settings = hidro_core::model::default_canvas_settings();
-    }
-    if let Some(o) = p.network_canvas_settings.as_object_mut() {
-        if v.is_null() {
-            o.remove(key);
-        } else {
-            o.insert(key.into(), v);
-        }
-    }
+    p.network_canvas_settings.set(key, v);
 }
 
 // ─── Desenare ────────────────────────────────────────────────────────────────
@@ -347,8 +338,8 @@ impl MapWindow {
         }
         ui.add_space(8.0);
         ui.columns(2, |c| {
-            w::text_field(&mut c[0], &t.t("native.latitude"), &mut self.lat, "45.748900");
-            w::text_field(&mut c[1], &t.t("native.longitude"), &mut self.lng, "21.208700");
+            w::text_field(&mut c[0], t.t("native.latitude"), &mut self.lat, "45.748900");
+            w::text_field(&mut c[1], t.t("native.longitude"), &mut self.lng, "21.208700");
         });
         if let Some(e) = &self.error {
             ui.label(RichText::new(e).size(12.0).color(pl.danger));
@@ -360,18 +351,18 @@ impl MapWindow {
                 (Some(lat), Some(lng)) if lat.abs() <= 90.0 && lng.abs() <= 180.0 => {
                     let sr = crate::canvas::scale_ratio(p);
                     let a = MapAnchor { lat, lng, world_x: center.0, world_y: center.1, tile_zoom: compute_tile_zoom(lat, sr) };
-                    set(p, "mapAnchor", serde_json::to_value(a).unwrap_or(Value::Null));
+                    p.network_canvas_settings.map_anchor = Some(a);
                     set(p, "mapLocationInfo", Value::Null);
                     self.error = None;
                     self.reverse = Some(spawn(ui.ctx(), move || reverse_geocode(lat, lng)));
                 }
-                _ => self.error = Some(t.t("native.invalidCoords")),
+                _ => self.error = Some(t.t("native.invalidCoords").to_string()),
             }
         }
         if anchor(p).is_some() {
             ui.add_space(4.0);
             if ui.add_sized(full, egui::Button::new(RichText::new(t.t("native.mapDisable")).color(pl.ink2))).clicked() {
-                set(p, "mapAnchor", Value::Null);
+                p.network_canvas_settings.map_anchor = None;
                 set(p, "mapLocationInfo", Value::Null);
             }
         }
@@ -384,7 +375,7 @@ impl MapWindow {
         ui.columns(3, |c| {
             for (i, (key, label)) in [("mapLockPan", "native.lockPan"), ("mapLockZoom", "native.lockZoom"), ("mapLockRotation", "native.lockRotation")].into_iter().enumerate() {
                 let on = flag(p, key);
-                if w::tool_button_w(&mut c[i], &t.t(label), on).clicked() {
+                if w::tool_button_w(&mut c[i], t.t(label), on).clicked() {
                     let on = !on;
                     set(p, key, json!(on));
                     let pan_or_zoom = flag(p, "mapLockPan") || flag(p, "mapLockZoom");
@@ -427,17 +418,17 @@ impl MapWindow {
         ui.add(egui::Label::new(RichText::new(t.t("terrain.attribution")).size(11.0).color(pl.muted)).wrap());
         ui.add_space(8.0);
         let mut depth = hidro_core::export::pipe_depth(p);
-        if w::num_field(ui, &t.t("native.pipeDepth"), &mut depth, Some("m"), None) {
+        if w::num_field(ui, t.t("native.pipeDepth"), &mut depth, Some("m"), None) {
             set(p, "pipeDepth", json!(depth.clamp(0.3, 5.0)));
         }
     }
 
     fn topo_section(&mut self, ui: &mut Ui, t: &I18n, p: &mut ProjectData) {
         let pl = pal(ui);
-        let pts = topo_points(p);
-        w::section_title(ui, &t.t("topo.title"));
+        let n_pts = topo_points(p).len();
+        w::section_title(ui, t.t("topo.title"));
         ui.add(egui::Label::new(RichText::new(t.t("topo.formats")).size(11.0).color(pl.muted)).wrap());
-        ui.label(RichText::new(t.tf("native.topoCount", &[("n", &pts.len().to_string())])).size(12.0).color(pl.muted));
+        ui.label(RichText::new(t.tf("native.topoCount", &[("n", &n_pts.to_string())])).size(12.0).color(pl.muted));
         ui.add_space(6.0);
         let crs_opts = [
             (Crs::Auto, "topo.crsAuto"),
@@ -446,16 +437,16 @@ impl MapWindow {
             (Crs::Wgs84, "topo.crsWgs84"),
         ];
         let cur = self.crs.unwrap_or(Crs::Auto);
-        let options: Vec<(String, String)> = crs_opts.iter().map(|(c, k)| (format!("{}", *c as u8), t.t(k))).collect();
+        let options: Vec<(String, String)> = crs_opts.iter().map(|(c, k)| (format!("{}", *c as u8), t.t(k).to_string())).collect();
         let mut sel = format!("{}", cur as u8);
-        if w::combo(ui, &t.t("topo.crs"), &mut sel, &options) {
+        if w::combo(ui, t.t("topo.crs"), &mut sel, &options) {
             if let Some((c, _)) = crs_opts.iter().find(|(c, _)| format!("{}", *c as u8) == sel) {
                 self.crs = Some(*c);
             }
         }
         ui.add_space(6.0);
         let mut radius = topo_radius(p);
-        if w::num_field(ui, &t.t("topo.radius"), &mut radius, Some("m"), None) {
+        if w::num_field(ui, t.t("topo.radius"), &mut radius, Some("m"), None) {
             set(p, "topoRadius", json!(radius.clamp(0.5, 100.0)));
         }
         ui.add_space(8.0);
@@ -463,10 +454,10 @@ impl MapWindow {
         if ui.add_sized(full, egui::Button::new(RichText::new(t.t("topo.chooseFile")).color(pl.ink2))).clicked() {
             self.import_topo(t, p);
         }
-        if !pts.is_empty() {
+        if n_pts > 0 {
             ui.add_space(4.0);
             if ui.add_sized(full, egui::Button::new(RichText::new(t.t("topo.clear")).color(pl.ink2))).clicked() {
-                set(p, "topoPoints", Value::Null);
+                p.network_canvas_settings.topo_points.clear();
                 // Cotele preluate din topo devin din nou eligibile pentru DEM.
                 for s in &mut p.network_sections {
                     if s.cota_up_source.as_deref() == Some("topo") {
@@ -497,15 +488,21 @@ impl MapWindow {
         };
         let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         let res = topo::parse_file(&name, &text, self.crs.unwrap_or(Crs::Auto));
-        let mut pts = topo_points(p);
+        let mut pts = topo_points(p).to_vec();
+        let mut duplicates = 0;
         for (name, ll, z) in &res.points {
+            // Același punct importat a doua oară (ex. același fișier) nu se dublează.
+            if pts.iter().any(|q| (q.lat - ll.lat).abs() < 1e-9 && (q.lng - ll.lng).abs() < 1e-9 && (q.z - z).abs() < 1e-6) {
+                duplicates += 1;
+                continue;
+            }
             pts.push(TopoPoint { id: uuid::Uuid::new_v4().to_string(), lat: ll.lat, lng: ll.lng, z: *z, name: name.clone() });
         }
-        set(p, "topoPoints", serde_json::to_value(&pts).unwrap_or(Value::Null));
+        p.network_canvas_settings.topo_points = pts;
         self.notice = Some(t.tf(
             "native.topoImported",
             &[
-                ("n", &res.points.len().to_string()),
+                ("n", &(res.points.len() - duplicates).to_string()),
                 ("noz", &res.skipped_no_z.to_string()),
                 ("bad", &res.skipped_invalid.to_string()),
             ],
@@ -532,7 +529,6 @@ pub fn info_bar(ui: &mut Ui, t: &I18n, p: &ProjectData) {
             ui.label(RichText::new(t.t("step8.loadingLocation")).size(11.5).italics().color(pl.muted));
         }
         ui.label(RichText::new(format!("{:.6}°N  {:.6}°E", a.lat, a.lng)).monospace().size(11.0).color(pl.muted));
-        let _ = geo::world_to_latlng;
     });
 }
 

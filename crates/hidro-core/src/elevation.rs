@@ -8,7 +8,6 @@
 //! Precizie verticală tipică ±2–5 m: valorile sunt *estimative* și nu înlocuiesc
 //! ridicarea topografică.
 
-use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
 use std::io::Read;
@@ -23,11 +22,7 @@ const TILE_URL: &str = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium"
 const MAX_LAT: f64 = 85.051_128_78;
 const MAX_POINTS: usize = 10_000;
 
-#[derive(Debug, Deserialize)]
-pub struct LatLng {
-    pub lat: f64,
-    pub lng: f64,
-}
+pub use crate::geo::LatLng;
 
 /// Altitudinile terenului [m] pentru fiecare punct, în aceeași ordine.
 /// `None` pentru coordonate invalide sau în afara proiecției Web Mercator.

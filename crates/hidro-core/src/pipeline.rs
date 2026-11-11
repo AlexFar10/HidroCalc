@@ -17,7 +17,7 @@ pub struct ProjectResults {
 /// Populația de perspectivă N = N₀ × (1 + p/100)^t, rotunjită.
 pub fn perspective_inhabitants(p: &ProjectData) -> f64 {
     let c = &p.consumers;
-    water_need::calculate_perspective_inhabitants(c.inhabitants, c.growth_rate, Some(c.perspective_years))
+    water_need::calculate_perspective_inhabitants(c.inhabitants, c.growth_rate, c.perspective_years)
 }
 
 pub fn compute(p: &ProjectData) -> ProjectResults {
@@ -32,7 +32,7 @@ pub fn compute(p: &ProjectData) -> ProjectResults {
                 .iter()
                 .map(|pc| water_need::PublicConsumer {
                     quantity: pc.quantity,
-                    num_consumers: Some(pc.num_consumers),
+                    num_consumers: pc.num_consumers,
                     q_specific: pc.q_specific,
                 })
                 .collect(),
@@ -59,9 +59,9 @@ pub fn compute(p: &ProjectData) -> ProjectResults {
             simultaneous_fires: h.simultaneous_fires,
             coeff_a: h.coeff_a,
             timp_refacere: h.timp_refacere,
-            debit_hydrant_int: Some(h.debit_hydrant_int),
-            operating_time_int: Some(h.operating_time_int),
-            simultaneous_fires_int: Some(h.simultaneous_fires_int),
+            debit_hydrant_int: h.debit_hydrant_int,
+            operating_time_int: h.operating_time_int,
+            simultaneous_fires_int: h.simultaneous_fires_int,
         },
         wd.q_s_or_max,
     );
@@ -87,8 +87,8 @@ pub fn compute(p: &ProjectData) -> ProjectResults {
         design_flows::DemandInput { q_s_zi_max: wd.q_s_zi_max, q_s_or_max: wd.q_s_or_max, ks_safe: wd.ks_safe },
         design_flows::HydrantResultsInput { q_ri: hy.q_ri },
         design_flows::HydrantDataInput {
-            simultaneous_fires_int: Some(h.simultaneous_fires_int),
-            debit_hydrant_int: Some(h.debit_hydrant_int),
+            simultaneous_fires_int: h.simultaneous_fires_int,
+            debit_hydrant_int: h.debit_hydrant_int,
             simultaneous_fires: h.simultaneous_fires,
             debit_hydrant: h.debit_hydrant,
         },
@@ -123,19 +123,16 @@ pub enum NetworkError {
 }
 
 /// Calculul hidraulic al tuturor tronsoanelor (debite, diametre, pierderi).
-/// Rezultatul e idempotent: rularea pe propria ieșire dă același rezultat.
-pub fn compute_network(p: &ProjectData) -> Result<Vec<network::NetworkSection>, NetworkError> {
+/// Rezultatele se scriu direct în tronsoanele proiectului; calculul e idempotent (a doua
+/// rulare nu mai schimbă nimic). La eroare tronsoanele rămân neschimbate.
+pub fn compute_network(p: &mut ProjectData) -> Result<(), NetworkError> {
     let bad = invalid_network_constants(p);
     if !bad.is_empty() {
         return Err(NetworkError::InvalidConstants(bad));
     }
     let c = &p.network_constants;
-    network::calculate_all_sections(
-        p.network_sections.clone(),
-        network::NetworkConstants { roughness: c.roughness, viscosity: c.viscosity, economic_velocity: c.economic_velocity },
-        p.hydrants.debit_hydrant,
-    )
-    .map_err(|_| NetworkError::Cycle)
+    let constants = network::NetworkConstants { roughness: c.roughness, viscosity: c.viscosity, economic_velocity: c.economic_velocity };
+    network::calculate_sections_in_place(&mut p.network_sections, &constants, p.hydrants.debit_hydrant).map_err(|_| NetworkError::Cycle)
 }
 
 /// Presiunile nodale la capetele aval, pornind de la cota radierului rezervorului.
@@ -188,15 +185,17 @@ mod tests {
         b.has_hydrant = true;
         b.parent_section_id = Some("a".into());
         p.network_sections = vec![a, b];
-        let first = compute_network(&p).unwrap();
+        compute_network(&mut p).unwrap();
+        let first = p.network_sections.clone();
         assert!(first[0].q_c > first[1].q_c);
         assert!(first[1].d_std_int > 0.0);
-        p.network_sections = first.clone();
-        assert_eq!(compute_network(&p).unwrap(), first);
+        compute_network(&mut p).unwrap();
+        assert_eq!(p.network_sections, first);
 
         p.network_sections[0].parent_section_id = Some("b".into());
-        assert_eq!(compute_network(&p), Err(NetworkError::Cycle));
+        assert_eq!(compute_network(&mut p), Err(NetworkError::Cycle));
+        assert_eq!(p.network_sections[1], first[1], "la eroare tronsoanele rămân neschimbate");
         p.network_constants.viscosity = 0.0;
-        assert!(matches!(compute_network(&p), Err(NetworkError::InvalidConstants(_))));
+        assert!(matches!(compute_network(&mut p), Err(NetworkError::InvalidConstants(_))));
     }
 }

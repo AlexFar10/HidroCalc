@@ -6,7 +6,7 @@
 use crate::calculations::network::NetworkSection;
 use crate::geo::MapAnchor;
 use crate::model::{SchemaElement, SchemaKind};
-use crate::schema::meters_per_px;
+use crate::schema::{meters_per_px, section_for};
 use serde::{Deserialize, Serialize};
 
 const TOPO_INFLUENCE_M: f64 = 150.0;
@@ -218,11 +218,10 @@ pub fn build(inp: &Input) -> Scene {
     let m = meters_per_px(inp.scale_ratio);
     let dem = inp.terrain.filter(|g| g.is_valid() && g.heights.iter().any(Option::is_some));
     let synth = if dem.is_none() && inp.interpolate_ground {
-        let by_name = |name: &str| inp.sections.iter().find(|s| s.group.is_none() && s.name == name);
         let mut known = Vec::new();
         let mut extra = Vec::new();
         for tr in inp.schema.iter().filter(|e| e.kind == SchemaKind::Tronson) {
-            let sec = tr.label.as_deref().and_then(by_name);
+            let sec = section_for(tr, inp.sections);
             let end = (tr.x2.unwrap_or(tr.x), tr.y2.unwrap_or(tr.y));
             for (p, c) in [((tr.x, tr.y), sec.and_then(|s| s.cota_up)), (end, sec.and_then(|s| s.cota_down))] {
                 match c {
@@ -263,10 +262,9 @@ pub fn build(inp: &Input) -> Scene {
 
     let tronsoane: Vec<&SchemaElement> = inp.schema.iter().filter(|e| e.kind == SchemaKind::Tronson).collect();
     let nodes_raw: Vec<&SchemaElement> = inp.schema.iter().filter(|e| !matches!(e.kind, SchemaKind::Tronson | SchemaKind::Text)).collect();
-    let by_name = |name: &str| inp.sections.iter().find(|s| s.group.is_none() && s.name == name);
     let mut ends: Vec<(f64, f64, Option<f64>)> = Vec::new();
     for tr in &tronsoane {
-        let sec = tr.label.as_deref().and_then(by_name);
+        let sec = section_for(tr, inp.sections);
         ends.push((tr.x, tr.y, sec.and_then(|s| s.cota_up)));
         ends.push((tr.x2.unwrap_or(tr.x), tr.y2.unwrap_or(tr.y), sec.and_then(|s| s.cota_down)));
     }
@@ -335,7 +333,7 @@ pub fn build(inp: &Input) -> Scene {
         .iter()
         .enumerate()
         .map(|(i, tr)| {
-            let sec = tr.label.as_deref().and_then(by_name);
+            let sec = section_for(tr, inp.sections);
             let (x2, y2) = (tr.x2.unwrap_or(tr.x), tr.y2.unwrap_or(tr.y));
             let g_up = ground_at(tr.x, tr.y, ends[i * 2].2);
             let g_dn = ground_at(x2, y2, ends[i * 2 + 1].2);

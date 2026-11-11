@@ -16,8 +16,7 @@ impl PehdDiameter {
     }
 }
 
-// NOTE: this table is duplicated in src/lib/pehd-diameters.ts (PEHD_DIAMETERS)
-// — keep both in sync when the standard changes.
+/// Diametrele PEHD standard (D_ext / D_int) [mm].
 pub const PEHD_DIAMETERS: &[PehdDiameter] = &[
     PehdDiameter { d_ext: 20.0,  d_int: 15.2  },
     PehdDiameter { d_ext: 25.0,  d_int: 20.2  },
@@ -55,6 +54,10 @@ pub struct NetworkSection {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
     pub parent_section_id: Option<String>,
+    /// Id-ul tronsonului din desen de care e legat (None = tronson adăugat manual sau
+    /// proiect vechi, în care legătura se face după nume).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema_id: Option<String>,
     pub length: f64,
     pub cota_up: Option<f64>,
     pub cota_down: Option<f64>,
@@ -121,8 +124,17 @@ impl NetworkSection {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
+/// Viteza minimă recomandată [m/s]; sub ea apare riscul de depuneri.
+pub const VELOCITY_MIN: f64 = 0.5;
+/// Viteza maximă recomandată [m/s]; peste ea apare riscul de eroziune.
+pub const VELOCITY_MAX: f64 = 2.5;
+
+/// Viteza reală e în afara intervalului recomandat (tronsoanele necalculate nu se semnalează).
+pub fn velocity_out_of_range(v: f64) -> bool {
+    v > 0.0 && !(VELOCITY_MIN..=VELOCITY_MAX).contains(&v)
+}
+
+#[derive(Debug, Clone)]
 pub struct NetworkConstants {
     pub roughness: f64,
     pub viscosity: f64,
@@ -180,120 +192,63 @@ fn detect_cycle(sections: &[NetworkSection]) -> bool {
 // alimentează nodul aval (Q_extern + Q_ie) și tot ce se ramifică mai jos
 // (Σ Qi al copiilor); debitul care intră (Qi) mai adaugă propriul debit al
 // tronsonului. Qc = (Qi+Qf)/2 e media folosită la predimensionare.
-fn calculate_route_flows(sections: Vec<NetworkSection>, hydrant_flow_ls: f64) -> Vec<NetworkSection> {
-    if sections.is_empty() {
-        return sections;
-    }
-
-    let section_ids: HashSet<&str> = sections.iter().map(|s| s.id.as_str()).collect();
-
-    let mut children_map: HashMap<Option<String>, Vec<usize>> = HashMap::new();
-    for (i, s) in sections.iter().enumerate() {
-        let pid = s
-            .parent_section_id
-            .as_deref()
-            .filter(|p| section_ids.contains(p))
-            .map(|p| p.to_string());
-        children_map.entry(pid).or_default().push(i);
-    }
-
-    let q_own_map: Vec<f64> = sections.iter().map(|s| s.q_linear * s.length).collect();
-    let q_ie_map: Vec<f64> = sections
-        .iter()
-        .map(|s| if s.has_hydrant { hydrant_flow_ls } else { 0.0 })
-        .collect();
-    let mut q_f_map = vec![0.0f64; sections.len()];
-    let mut q_i_map = vec![0.0f64; sections.len()];
-    let mut visited = vec![false; sections.len()];
-
-    fn calc_section(
-        idx: usize,
-        sections: &[NetworkSection],
-        children_map: &HashMap<Option<String>, Vec<usize>>,
-        q_own_map: &[f64],
-        q_ie_map: &[f64],
-        q_f_map: &mut Vec<f64>,
-        q_i_map: &mut Vec<f64>,
-        visited: &mut Vec<bool>,
-    ) {
-        if visited[idx] {
-            return;
-        }
-        visited[idx] = true;
-
-        let section = &sections[idx];
-        let child_indices = children_map
-            .get(&Some(section.id.clone()))
-            .cloned()
-            .unwrap_or_default();
-
-        for &ci in &child_indices {
-            calc_section(ci, sections, children_map, q_own_map, q_ie_map, q_f_map, q_i_map, visited);
-        }
-
-        let sum_child_qi: f64 = child_indices.iter().map(|&ci| q_i_map[ci]).sum();
-        let q_f = section.q_extern + q_ie_map[idx] + sum_child_qi;
-        q_f_map[idx] = q_f;
-        q_i_map[idx] = q_f + q_own_map[idx];
-    }
-
-    let root_indices: Vec<usize> = sections
+// Override-urile manuale au prioritate și se propagă: un Qi forțat pe un tronson
+// intră în Qf-ul tronsonului din amonte.
+fn calculate_route_flows(sections: &mut [NetworkSection], hydrant_flow_ls: f64) {
+    let n = sections.len();
+    let index: HashMap<&str, usize> = sections.iter().enumerate().map(|(i, s)| (s.id.as_str(), i)).collect();
+    let parent: Vec<Option<usize>> = sections
         .iter()
         .enumerate()
-        .filter(|(_, s)| {
-            s.parent_section_id
-                .as_deref()
-                .map(|p| !section_ids.contains(p))
-                .unwrap_or(true)
-        })
-        .map(|(i, _)| i)
+        .map(|(i, s)| s.parent_section_id.as_deref().and_then(|p| index.get(p).copied()).filter(|p| *p != i))
         .collect();
-
-    for root_idx in root_indices {
-        calc_section(
-            root_idx,
-            &sections,
-            &children_map,
-            &q_own_map,
-            &q_ie_map,
-            &mut q_f_map,
-            &mut q_i_map,
-            &mut visited,
-        );
+    let mut children: Vec<Vec<usize>> = vec![Vec::new(); n];
+    for (i, p) in parent.iter().enumerate() {
+        if let Some(p) = p {
+            children[*p].push(i);
+        }
     }
-
-    sections
-        .into_iter()
-        .enumerate()
-        .map(|(i, mut s)| {
-            s.q_own = q_own_map[i];
-            // Override-urile manuale au prioritate; Qc urmează Qi/Qf (fie
-            // calculate, fie forțate) dacă nu e el însuși forțat.
-            s.q_ie = s.q_ie_override.unwrap_or(q_ie_map[i]);
-            s.q_f = s.q_f_override.unwrap_or(q_f_map[i]);
-            s.q_i = s.q_i_override.unwrap_or(q_i_map[i]);
-            s.q_c = s.q_c_override.unwrap_or((s.q_i + s.q_f) / 2.0);
-            s
-        })
-        .collect()
+    // Parcurgere fără recursivitate: părinții înaintea copiilor, apoi calcul în ordine inversă.
+    let mut order = Vec::with_capacity(n);
+    let mut stack: Vec<usize> = (0..n).filter(|i| parent[*i].is_none()).collect();
+    while let Some(i) = stack.pop() {
+        order.push(i);
+        stack.extend(&children[i]);
+    }
+    let mut q_i = vec![0.0f64; n];
+    for &i in order.iter().rev() {
+        let sum_child_qi: f64 = children[i].iter().map(|&c| q_i[c]).sum();
+        let s = &mut sections[i];
+        s.q_own = s.q_linear * s.length;
+        s.q_ie = s.q_ie_override.unwrap_or(if s.has_hydrant { hydrant_flow_ls } else { 0.0 });
+        s.q_f = s.q_f_override.unwrap_or(s.q_extern + s.q_ie + sum_child_qi);
+        s.q_i = s.q_i_override.unwrap_or(s.q_f + s.q_own);
+        s.q_c = s.q_c_override.unwrap_or((s.q_i + s.q_f) / 2.0);
+        q_i[i] = s.q_i;
+    }
 }
 
-fn calculate_section_hydraulic(mut section: NetworkSection, constants: &NetworkConstants) -> NetworkSection {
+/// Aduce la zero rezultatele hidraulice ale unui tronson care nu se poate calcula.
+fn clear_hydraulics(section: &mut NetworkSection, regime: &str) {
+    section.d_std_ext = 0.0;
+    section.d_std_int = 0.0;
+    section.v_real = 0.0;
+    section.re = 0.0;
+    section.d_over_k = 0.0;
+    section.regime = regime.to_string();
+    section.lambda = 0.0;
+    section.h_lin = 0.0;
+    section.h_loc = 0.0;
+    section.h_tot = 0.0;
+    section.slope = 0.0;
+}
+
+fn calculate_section_hydraulic(section: &mut NetworkSection, constants: &NetworkConstants) {
     let q_m3s = section.q_c / 1000.0;
     if q_m3s <= 0.0 || section.length <= 0.0 {
         section.d_calc = 0.0;
-        section.d_std_ext = 0.0;
-        section.d_std_int = 0.0;
-        section.v_real = 0.0;
-        section.re = 0.0;
-        section.d_over_k = 0.0;
-        section.regime = "none".to_string();
-        section.lambda = 0.0;
-        section.h_lin = 0.0;
-        section.h_loc = 0.0;
-        section.h_tot = 0.0;
-        section.slope = 0.0;
-        return section;
+        clear_hydraulics(section, "none");
+        return;
     }
 
     // Dp: fie forțat manual, fie predimensionat din Qc și viteza economică.
@@ -325,18 +280,8 @@ fn calculate_section_hydraulic(mut section: NetworkSection, constants: &NetworkC
         }
         _ => match find_standard_diameter(d_calc_mm) {
             None => {
-                section.d_std_ext = 0.0;
-                section.d_std_int = 0.0;
-                section.v_real = 0.0;
-                section.re = 0.0;
-                section.d_over_k = 0.0;
-                section.regime = "oversized".to_string();
-                section.lambda = 0.0;
-                section.h_lin = 0.0;
-                section.h_loc = 0.0;
-                section.h_tot = 0.0;
-                section.slope = 0.0;
-                return section;
+                clear_hydraulics(section, "oversized");
+                return;
             }
             Some(d) => (d.d_ext, d.d_int),
         },
@@ -376,31 +321,29 @@ fn calculate_section_hydraulic(mut section: NetworkSection, constants: &NetworkC
     section.h_loc = h_loc;
     section.h_tot = h_tot;
     section.slope = slope;
-    section
 }
 
-#[derive(Serialize, Debug, Clone, PartialEq)]
-#[serde(tag = "code", content = "message")]
+#[derive(Debug, Clone, PartialEq)]
 pub enum HydraulicError {
-    #[serde(rename = "ERR_CYCLE_DETECTED")]
-    CycleDetected(String),
+    /// Topologie circulară: un tronson ajunge, prin părinți, înapoi la el însuși.
+    CycleDetected,
 }
 
-pub fn calculate_all_sections(
-    sections: Vec<NetworkSection>,
-    constants: NetworkConstants,
+/// Calculul hidraulic al tuturor tronsoanelor, scris direct în ele (debite, diametre, pierderi).
+/// La eroare tronsoanele rămân neschimbate.
+pub fn calculate_sections_in_place(
+    sections: &mut [NetworkSection],
+    constants: &NetworkConstants,
     hydrant_flow_ls: f64,
-) -> Result<Vec<NetworkSection>, HydraulicError> {
-    if detect_cycle(&sections) {
-        return Err(HydraulicError::CycleDetected(
-            "Topologie circulară detectată. Verificați conexiunile dintre tronsoane.".to_string(),
-        ));
+) -> Result<(), HydraulicError> {
+    if detect_cycle(sections) {
+        return Err(HydraulicError::CycleDetected);
     }
-    let with_flows = calculate_route_flows(sections, hydrant_flow_ls);
-    Ok(with_flows
-        .into_iter()
-        .map(|s| calculate_section_hydraulic(s, &constants))
-        .collect())
+    calculate_route_flows(sections, hydrant_flow_ls);
+    for s in sections.iter_mut() {
+        calculate_section_hydraulic(s, constants);
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -416,44 +359,12 @@ mod tests {
         has_hydrant: bool,
     ) -> NetworkSection {
         NetworkSection {
-            id: id.to_string(),
-            name: id.to_string(),
-            color: None,
-            group: None,
             parent_section_id: parent.map(|p| p.to_string()),
             length,
-            cota_up: None,
-            cota_down: None,
-            cota_up_source: None,
-            cota_down_source: None,
             q_extern,
             q_linear,
-            zeta: 0.0,
             has_hydrant,
-            q_i_override: None,
-            q_f_override: None,
-            q_ie_override: None,
-            q_c_override: None,
-            d_calc_override: None,
-            d_std_int_override: None,
-            q_own: 0.0,
-            q_ie: 0.0,
-            q_f: 0.0,
-            q_i: 0.0,
-            q_c: 0.0,
-            d_calc: 0.0,
-            d_std_ext: 0.0,
-            d_std_int: 0.0,
-            v_real: 0.0,
-            re: 0.0,
-            d_over_k: 0.0,
-            regime: String::new(),
-            lambda: 0.0,
-            h_lin: 0.0,
-            h_loc: 0.0,
-            h_tot: 0.0,
-            slope: 0.0,
-            extra: Default::default(),
+            ..NetworkSection::new(id.to_string(), id.to_string())
         }
     }
 
@@ -468,7 +379,8 @@ mod tests {
             section("A", None, 50.0, 0.0, 0.02, false),
             section("B", Some("A"), 100.0, 0.0, 0.01, true),
         ];
-        let result = calculate_route_flows(sections, 5.0);
+        let mut result = sections;
+        calculate_route_flows(&mut result, 5.0);
         let a = result.iter().find(|s| s.id == "A").unwrap();
         let b = result.iter().find(|s| s.id == "B").unwrap();
 
@@ -488,7 +400,8 @@ mod tests {
     #[test]
     fn leaf_without_hydrant_or_extern_has_symmetric_qc() {
         let sections = vec![section("A", None, 100.0, 0.0, 0.005, false)];
-        let result = calculate_route_flows(sections, 5.0);
+        let mut result = sections;
+        calculate_route_flows(&mut result, 5.0);
         let a = &result[0];
         // Qf = 0, Qi = q_own = 0.5, Qc = 0.25
         assert!((a.q_f - 0.0).abs() < 1e-9);
@@ -511,7 +424,8 @@ mod tests {
         let mut s = section("A", None, 100.0, 0.0, 0.0, false);
         s.q_i_override = Some(12.0);
         s.q_f_override = Some(8.0);
-        let result = calculate_all_sections(vec![s], constants(), 5.0).unwrap();
+        let mut result = vec![s];
+        calculate_sections_in_place(&mut result, &constants(), 5.0).unwrap();
         let a = &result[0];
         assert!((a.q_i - 12.0).abs() < 1e-9);
         assert!((a.q_f - 8.0).abs() < 1e-9);
@@ -525,7 +439,8 @@ mod tests {
     fn qc_override_wins_over_qi_qf() {
         let mut s = section("A", None, 100.0, 0.0, 0.02, false);
         s.q_c_override = Some(5.0);
-        let result = calculate_all_sections(vec![s], constants(), 5.0).unwrap();
+        let mut result = vec![s];
+        calculate_sections_in_place(&mut result, &constants(), 5.0).unwrap();
         assert!((result[0].q_c - 5.0).abs() < 1e-9);
     }
 
@@ -536,7 +451,8 @@ mod tests {
         let mut s = section("A", None, 100.0, 0.0, 0.0, false);
         s.q_c_override = Some(10.0);
         s.d_std_int_override = Some(99.4); // rândul PEHD 110/99.4
-        let result = calculate_all_sections(vec![s], constants(), 5.0).unwrap();
+        let mut result = vec![s];
+        calculate_sections_in_place(&mut result, &constants(), 5.0).unwrap();
         let a = &result[0];
         assert!((a.d_std_int - 99.4).abs() < 1e-9);
         assert!((a.d_std_ext - 110.0).abs() < 1e-9);
@@ -545,13 +461,25 @@ mod tests {
         assert!((a.v_real - expected_v).abs() < 1e-6);
     }
 
+    // Un Qi forțat pe un tronson din aval intră în Qf-ul (și deci în Qi/Qc) tronsonului din amonte.
+    #[test]
+    fn child_override_propagates_upstream() {
+        let mut b = section("B", Some("A"), 100.0, 0.0, 0.01, false);
+        b.q_i_override = Some(4.0);
+        let mut result = vec![section("A", None, 50.0, 0.0, 0.02, false), b];
+        calculate_route_flows(&mut result, 5.0);
+        assert!((result[0].q_f - 4.0).abs() < 1e-9);
+        assert!((result[0].q_i - 5.0).abs() < 1e-9);
+    }
+
     // Dp forțat manual, fără override pe Di STAS: snapping-ul folosește Dp-ul dat.
     #[test]
     fn d_calc_override_feeds_snapping() {
         let mut s = section("A", None, 100.0, 0.0, 0.0, false);
         s.q_c_override = Some(10.0);
         s.d_calc_override = Some(100.0);
-        let result = calculate_all_sections(vec![s], constants(), 5.0).unwrap();
+        let mut result = vec![s];
+        calculate_sections_in_place(&mut result, &constants(), 5.0).unwrap();
         let a = &result[0];
         assert!((a.d_calc - 100.0).abs() < 1e-9);
         // primul standard cu d_int ≥ 100 este 125/113.0

@@ -1,4 +1,4 @@
-//! Datele pentru documente (Memoriu tehnic .docx, liste de cantități .xlsx),
+//! Datele pentru documente (Memoriu tehnic .docx, liste de cantități),
 //! portat din `documentData.ts`. Cheile sunt contractul cu șabloanele utilizatorului
 //! — nu se redenumesc (vezi `docs/sabloane-export.md` din aplicația React).
 
@@ -7,8 +7,8 @@ use super::{pipe_depth, round, Tr};
 use crate::calculations::network::NetworkSection;
 use crate::model::ProjectData;
 use crate::pipeline::ProjectResults;
-use crate::schema::flatten_with_group;
 use crate::model::SchemaKind;
+use crate::schema::flatten_with_group;
 use serde_json::{json, Value};
 
 /// Număr rotunjit la `d` zecimale; `null` pentru valori lipsă sau infinite.
@@ -81,7 +81,7 @@ pub fn build(p: &ProjectData, res: &ProjectResults, secs: &[NetworkSection], tod
     let cotas: Vec<f64> = secs.iter().flat_map(|s| [s.cota_up, s.cota_down]).flatten().filter(|c| c.is_finite()).collect();
     let (cota_min, cota_max) = (cotas.iter().cloned().fold(f64::INFINITY, f64::min), cotas.iter().cloned().fold(f64::NEG_INFINITY, f64::max));
     // Coordonatele din ancora hărții (dacă a fost ancorată).
-    let anchor = p.network_canvas_settings.get("mapAnchor").and_then(|a| Some((a.get("lat")?.as_f64()?, a.get("lng")?.as_f64()?)));
+    let anchor = p.network_canvas_settings.map_anchor.map(|a| (a.lat, a.lng));
     // Numărul de obiecte din desen.
     let els = flatten_with_group(&p.network_schema);
     let n_of = |k: SchemaKind| els.iter().filter(|(e, _)| e.kind == k).count();

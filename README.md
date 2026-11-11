@@ -11,7 +11,8 @@ repo-ul `Hidro`: totul e scris în Rust, interfața în [egui](https://github.co
 | `crates/hidro-core` | Logica de domeniu, fără interfață: modelul `ProjectData` (JSON compatibil cu aplicația React), formulele (pașii 3–8), lanțul de calcul, cotele de teren DEM. |
 | `crates/hidrocalc` | Aplicația egui: ecranul de start, pașii, persistența SQLite, traducerile RO/EN. |
 | `assets/locales` | Traducerile (aceleași chei ca în aplicația React, plus secțiunea `native`). |
-| `assets/fonts` | DejaVu Sans, font de rezervă pentru săgeți și simboluri (licență: `LICENSE_DEJAVU.txt`). |
+| `assets/fonts` | Roboto (interfața) și DejaVu Sans, font de rezervă pentru săgeți și simboluri (licențe: `LICENSE_ROBOTO.txt`, `LICENSE_DEJAVU.txt`). |
+| `assets/templates` | Șablonul Word al Memoriului tehnic (se reconstruiește cu `python3 tools/build_memoriu_template.py`). |
 
 ## Comenzi
 
@@ -99,7 +100,7 @@ Toate funcțiile aplicației React/Tauri sunt migrate.
 | Cote teren automate din DEM și din puncte topo (CSV/GPX/KML, Stereo 70) | ✅ |
 | Vedere 3D: teren DEM, conducte la adâncimea de pozare, noduri, etichete | ✅ (fără modele .gltf) |
 | Pasul 9: indicatori, grafice, tabel rezultate | ✅ |
-| Exporturi (pasul 9, pe secțiuni, individual sau multiplu): JSON proiect, PNG/DXF plan 2D, PNG/DXF/GLB/STL 3D; documentele scrise urmează | ✅ |
+| Exporturi (pasul 9, pe secțiuni, individual sau multiplu): JSON proiect, PNG/DXF plan 2D, PNG/DXF/GLB/STL 3D, Memoriu tehnic (.docx) | ✅ |
 
 Diferențe față de versiunea React: vederea 3D e desenată cu egui (fără modele .gltf, cu modele procedurale);
-PDF-urile au diacritice (fonturi încorporate); captura PNG are rezoluția ecranului.
+Memoriul tehnic se generează ca .docx dintr-un șablon încorporat; captura PNG are rezoluția ecranului.

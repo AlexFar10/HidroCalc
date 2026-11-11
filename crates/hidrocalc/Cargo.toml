@@ -10,7 +10,6 @@ chrono = { version = "0.4.45", default-features = false, features = ["clock", "s
 directories = "6.0.0"
 eframe = { version = "0.37.0", features = ["persistence"] }
 egui = { version = "0.37.0", features = ["monochrome_emoji_fonts"] }
-egui_extras = "0.37.0"
 hidro-core = { version = "0.1.0", path = "../hidro-core" }
 image = { version = "0.25.10", default-features = false, features = ["png"] }
 log = "0.4.35"

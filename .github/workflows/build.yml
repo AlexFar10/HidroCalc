@@ -27,12 +27,28 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy -p hidro-core --all-targets -- -D warnings
       - run: cargo test -p hidro-core
+
+  # Testele aplicației (interfață, bază de date) randează cu GPU, deci rulează pe macOS.
+  test-app:
+    name: Teste aplicație
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy -p hidrocalc --all-targets -- -D warnings
+      - run: cargo test -p hidrocalc
 
   macos:
     name: macOS (Apple Silicon)
-    needs: test
+    needs: [test, test-app]
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
@@ -90,7 +106,7 @@ jobs:
 
   windows:
     name: Windows (x64)
-    needs: test
+    needs: [test, test-app]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7

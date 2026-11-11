@@ -46,11 +46,10 @@ pub fn collect_targets(schema: &[SchemaElement], sections: &[NetworkSection]) ->
     let mut used = std::collections::HashSet::new();
     let mut out = Vec::new();
     for tr in schema.iter().filter(|e| e.kind == SchemaKind::Tronson) {
-        let Some(label) = &tr.label else { continue };
-        let Some(sec) = sections.iter().find(|s| s.group.as_deref().unwrap_or("").is_empty() && &s.name == label && !used.contains(&s.id)) else {
+        let Some(sec) = crate::schema::section_for(tr, sections) else { continue };
+        if !used.insert(sec.id.clone()) {
             continue;
-        };
-        used.insert(sec.id.clone());
+        }
         if eligible(sec, End::Up) {
             out.push(Target { section_id: sec.id.clone(), end: End::Up, x: tr.x, y: tr.y });
         }

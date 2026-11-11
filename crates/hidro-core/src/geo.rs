@@ -90,7 +90,6 @@ struct Sterea {
     e: f64,
     c: f64,
     k: f64,
-    ratexp: f64,
     phic0: f64,
     sinc0: f64,
     cosc0: f64,
@@ -114,7 +113,7 @@ impl Sterea {
         let chi = (sphi / c).asin();
         let ratexp = 0.5 * c * e;
         let k = (0.5 * chi + FRAC_PI_4).tan() / ((0.5 * phi0 + FRAC_PI_4).tan().powf(c) * srat(e * sphi, ratexp));
-        Self { e, c, k, ratexp, phic0: chi, sinc0: chi.sin(), cosc0: chi.cos(), r2: 2.0 * rc, lon0: lon0.to_radians(), k0, x0, y0, a: ell.a }
+        Self { e, c, k, phic0: chi, sinc0: chi.sin(), cosc0: chi.cos(), r2: 2.0 * rc, lon0: lon0.to_radians(), k0, x0, y0, a: ell.a }
     }
 
     /// (Est, Nord) [m] → (lat, lon) [rad] pe elipsoidul proiecției.
@@ -141,7 +140,6 @@ impl Sterea {
             }
             p = next;
         }
-        let _ = self.ratexp;
         (p, lam + self.lon0)
     }
 }

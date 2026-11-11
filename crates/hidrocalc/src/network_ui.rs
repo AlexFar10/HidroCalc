@@ -4,7 +4,7 @@ use crate::charts;
 use crate::i18n::I18n;
 use crate::widgets::{self as w, fmt, pal};
 use eframe::egui::{self, RichText, Stroke, Ui};
-use hidro_core::calculations::network::{NetworkSection, PEHD_DIAMETERS};
+use hidro_core::calculations::network::{velocity_out_of_range, NetworkSection, PEHD_DIAMETERS, VELOCITY_MAX, VELOCITY_MIN};
 use hidro_core::model::ProjectData;
 use hidro_core::pipeline::{NetworkError, ProjectResults};
 use hidro_core::schema;
@@ -114,7 +114,7 @@ fn resize_grip(ui: &mut Ui, t: &I18n) {
 
 pub fn error_text(t: &I18n, e: &NetworkError) -> String {
     match e {
-        NetworkError::Cycle => t.t("errors.ERR_CYCLE_DETECTED"),
+        NetworkError::Cycle => t.t("errors.ERR_CYCLE_DETECTED").to_string(),
         NetworkError::InvalidConstants(c) => format!("{} {}", t.t("native.invalidConstants"), c.join(", ")),
     }
 }
@@ -125,7 +125,7 @@ fn regime(t: &I18n, r: &str) -> String {
     } else {
         let k = format!("network.regime.{r}");
         let s = t.t(&k);
-        if s == k { r.into() } else { s }
+        if s == k { r.into() } else { s.to_string() }
     }
 }
 
@@ -180,7 +180,7 @@ fn opt_num(ui: &mut Ui, id: egui::Id, v: &mut Option<f64>) -> bool {
     changed
 }
 
-fn header(ui: &mut Ui, text: &str, tip: Option<String>) {
+fn header(ui: &mut Ui, text: &str, tip: Option<&str>) {
     let p = pal(ui);
     let r = ui.label(RichText::new(text).size(11.0).strong().color(p.muted));
     if let Some(tip) = tip {
@@ -195,7 +195,8 @@ fn results_table(ui: &mut Ui, t: &I18n, p: &mut ProjectData, st: Option<&mut Net
     let mut selected = st.as_ref().and_then(|s| s.selected.clone());
     let mut remove = None;
     let mut swap: Option<(usize, usize)> = None;
-    let mut length_changes: Vec<(String, f64)> = Vec::new();
+    let mut length_changes: Vec<(Option<String>, String, f64)> = Vec::new();
+    let mut renames: Vec<(String, String)> = Vec::new();
     let cols = [
         ("colNrCrt", false),
         ("colSection", false),
@@ -220,7 +221,7 @@ fn results_table(ui: &mut Ui, t: &I18n, p: &mut ProjectData, st: Option<&mut Net
             }
             for (k, tip) in cols {
                 let tip = tip.then(|| t.t(&format!("step8.{k}Tip"))).filter(|s| !s.starts_with("step8."));
-                header(ui, &t.t(&format!("step8.{k}")), tip);
+                header(ui, t.t(&format!("step8.{k}")), tip);
             }
             ui.end_row();
 
@@ -233,7 +234,7 @@ fn results_table(ui: &mut Ui, t: &I18n, p: &mut ProjectData, st: Option<&mut Net
                         ui.label("");
                     }
                     ui.label("");
-                    let g = if groups[i].is_empty() { t.t("step8.mainSchema") } else { groups[i].clone() };
+                    let g = if groups[i].is_empty() { t.t("step8.mainSchema") } else { groups[i].as_str() };
                     ui.label(RichText::new(g.to_uppercase()).size(10.5).strong().color(pl.muted));
                     ui.end_row();
                 }
@@ -259,6 +260,12 @@ fn results_table(ui: &mut Ui, t: &I18n, p: &mut ProjectData, st: Option<&mut Net
                 }
                 if editable {
                     let r = ui.add_sized([84.0, 24.0], egui::TextEdit::singleline(&mut s.name));
+                    if r.changed() {
+                        // Redenumirea din tabel se vede și pe desen (legătura e prin id).
+                        if let Some(sid) = &s.schema_id {
+                            renames.push((sid.clone(), s.name.clone()));
+                        }
+                    }
                     if r.gained_focus() {
                         selected = Some(s.id.clone());
                     }
@@ -273,7 +280,7 @@ fn results_table(ui: &mut Ui, t: &I18n, p: &mut ProjectData, st: Option<&mut Net
                         w::num_input(ui, id.with("l"), &mut s.length, 0.0);
                     });
                     if s.length != before {
-                        length_changes.push((s.name.clone(), s.length));
+                        length_changes.push((s.schema_id.clone(), s.name.clone(), s.length));
                     }
                     override_cell(ui, id.with("dp"), &mut s.d_calc_override, s.d_calc, 2);
                     override_cell(ui, id.with("di"), &mut s.d_std_int_override, s.d_std_int, 1);
@@ -288,22 +295,27 @@ fn results_table(ui: &mut Ui, t: &I18n, p: &mut ProjectData, st: Option<&mut Net
                         ui.label(RichText::new(fmt(v, d)).monospace().color(pl.muted));
                     }
                 }
-                let v_warn = s.v_real > 0.0 && !(0.5..=2.5).contains(&s.v_real);
+                let v_warn = velocity_out_of_range(s.v_real);
                 ui.label(RichText::new(fmt(s.d_std_ext, 1)).monospace().color(pl.muted));
                 ui.label(RichText::new(fmt(s.v_real, 3)).monospace().color(if v_warn { pl.warning } else { pl.muted }));
                 ui.label(RichText::new(fmt(s.re, 0)).monospace().color(pl.muted));
                 ui.label(RichText::new(if s.d_over_k > 0.0 { fmt(s.d_over_k, 0) } else { "-".into() }).monospace().color(pl.muted));
                 ui.label(RichText::new(fmt(s.lambda, 4)).monospace().color(pl.muted));
                 ui.label(RichText::new(regime(t, &s.regime)).color(pl.muted));
-                if editable && w::confirm_delete(ui, id.with("del"), &t.t("common.delete"), &t.t("home.deleteConfirm")) {
+                if editable && w::confirm_delete(ui, id.with("del"), t.t("common.delete"), t.t("home.deleteConfirm")) {
                     remove = Some(i);
                 }
                 ui.end_row();
             }
         });
     });
-    for (name, len) in length_changes {
-        schema::set_tronson_override_length(&mut p.network_schema, &name, (len > 0.0).then_some(len));
+    for (schema_id, name, len) in length_changes {
+        schema::set_tronson_override_length(&mut p.network_schema, schema_id.as_deref(), &name, (len > 0.0).then_some(len));
+    }
+    for (schema_id, name) in renames {
+        if let Some(el) = schema::find_element_mut(&mut p.network_schema, &schema_id) {
+            el.label = Some(name);
+        }
     }
     if let Some((a, b)) = swap {
         p.network_sections.swap(a, b);
@@ -331,7 +343,7 @@ fn inspector(ui: &mut Ui, t: &I18n, p: &mut ProjectData, st: &mut NetworkUi) {
         st.selected = None;
         return;
     };
-    let others: Vec<(String, String)> = std::iter::once((String::new(), t.t("step8.sourceReservoir")))
+    let others: Vec<(String, String)> = std::iter::once((String::new(), t.t("step8.sourceReservoir").to_string()))
         .chain(p.network_sections.iter().filter(|s| s.id != sel).map(|s| (s.id.clone(), s.name.clone())))
         .collect();
     let s = &mut p.network_sections[idx];
@@ -354,29 +366,27 @@ fn inspector(ui: &mut Ui, t: &I18n, p: &mut ProjectData, st: &mut NetworkUi) {
                 });
             });
         };
-        let v_warn = s.v_real > 0.0 && !(0.5..=2.5).contains(&s.v_real);
+        let v_warn = velocity_out_of_range(s.v_real);
         kpi(ui, "Qc", format!("{} l/s", fmt(s.q_c, 4)), false);
         kpi(ui, "D ext", format!("{} mm", fmt(s.d_std_ext, 0)), false);
         kpi(ui, "v", format!("{} m/s", fmt(s.v_real, 3)), v_warn);
         kpi(ui, "Re", fmt(s.re, 0), false);
         kpi(ui, "h_tot", format!("{} m", fmt(s.h_tot, 4)), false);
         if v_warn {
-            let msg = if s.v_real < 0.5 {
-                format!("⚠ v = {} m/s < 0.5 m/s — risc de depuneri.", fmt(s.v_real, 3))
-            } else {
-                format!("⚠ v = {} m/s > 2.5 m/s — risc de eroziune.", fmt(s.v_real, 3))
-            };
+            let low = s.v_real < VELOCITY_MIN;
+            let limit = if low { VELOCITY_MIN } else { VELOCITY_MAX };
+            let msg = t.tf(if low { "native.velocityLow" } else { "native.velocityHigh" }, &[("v", &fmt(s.v_real, 3)), ("limit", &format!("{limit}"))]);
             w::alert(ui, &msg, false);
         }
         ui.separator();
         let id = egui::Id::unique(("insp", &sel));
         let mut parent = s.parent_section_id.clone().unwrap_or_default();
-        if w::combo(ui, &t.t("native.parent"), &mut parent, &others) {
+        if w::combo(ui, t.t("native.parent"), &mut parent, &others) {
             s.parent_section_id = (!parent.is_empty()).then_some(parent);
         }
-        w::num_field(ui, &t.t("native.qExtern"), &mut s.q_extern, Some("l/s"), None);
-        w::num_field(ui, &t.t("native.qLinear"), &mut s.q_linear, Some("l/s·m"), None);
-        w::num_field(ui, &t.t("native.zeta"), &mut s.zeta, None, None);
+        w::num_field(ui, t.t("native.qExtern"), &mut s.q_extern, Some("l/s"), None);
+        w::num_field(ui, t.t("native.qLinear"), &mut s.q_linear, Some("l/s·m"), None);
+        w::num_field(ui, t.t("native.zeta"), &mut s.zeta, None, None);
         ui.checkbox(&mut s.has_hydrant, t.t("native.hasHydrant"));
         ui.separator();
         for (label, val, src) in [
@@ -384,7 +394,7 @@ fn inspector(ui: &mut Ui, t: &I18n, p: &mut ProjectData, st: &mut NetworkUi) {
             (t.t("terrain.cotaDown"), &mut s.cota_down, &mut s.cota_down_source),
         ] {
             ui.horizontal(|ui| {
-                ui.label(RichText::new(&label).size(12.0).color(pl.ink2).strong());
+                ui.label(RichText::new(label).size(12.0).color(pl.ink2).strong());
                 let badge = match (src.as_deref(), val.is_some()) {
                     (Some("dem"), true) => Some((t.t("terrain.demBadge"), pl.muted)),
                     (Some("topo"), true) => Some((t.t("terrain.topoBadge"), pl.muted)),
@@ -396,7 +406,7 @@ fn inspector(ui: &mut Ui, t: &I18n, p: &mut ProjectData, st: &mut NetworkUi) {
                 }
             });
             ui.horizontal(|ui| {
-                if opt_num(ui, id.with(&label), val) {
+                if opt_num(ui, id.with(label), val) {
                     *src = val.map(|_| "manual".to_string());
                 }
                 ui.label(RichText::new("m").size(11.0).color(pl.muted));
@@ -409,11 +419,11 @@ pub fn step8(ui: &mut Ui, t: &I18n, p: &mut ProjectData, st: &mut NetworkUi) -> 
     let pl = pal(ui);
     let mut go = None;
     let title = t.list("steps.names").get(7).cloned().unwrap_or_default();
-    w::step_header(ui, &title, &t.t("native.step8Subtitle"));
+    w::step_header(ui, title, t.t("native.step8Subtitle"));
 
     ui.horizontal(|ui| {
         let labels = [t.t("view3d.mode2D"), t.t("view3d.mode3D")];
-        if let Some(i) = w::segmented(ui, &[labels[0].as_str(), labels[1].as_str()], st.show_3d as usize) {
+        if let Some(i) = w::segmented(ui, &labels, st.show_3d as usize) {
             st.show_3d = i == 1;
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -460,20 +470,20 @@ pub fn step8(ui: &mut Ui, t: &I18n, p: &mut ProjectData, st: &mut NetworkUi) -> 
         Tab::Constants => {
             let c = &mut p.network_constants;
             w::card(ui, |ui| {
-                w::section_title(ui, &t.t("step8.tabConstants"));
+                w::section_title(ui, t.t("step8.tabConstants"));
                 ui.columns(3, |col| {
-                    w::num_field(&mut col[0], &t.t("step8.roughness"), &mut c.roughness, Some("m"), Some(t.tip("Rugozitatea absolută a peretelui conductei (k), folosită în Darcy-Weisbach. Pentru PEHD: ~0.0001 m.").as_str()));
-                    w::num_field(&mut col[1], &t.t("step8.viscosity"), &mut c.viscosity, Some("m²/s"), Some(t.tip("Vâscozitatea cinematică a apei, folosită la numărul Reynolds. La 10°C: 1.31×10⁻⁶ m²/s.").as_str()));
-                    w::num_field(&mut col[2], &t.t("step8.economicVelocity"), &mut c.economic_velocity, Some("m/s"), Some(t.tip("Viteza economică folosită pentru predimensionarea diametrului D_calc. Sursă: NP 133 (uzual 0.7–1.5 m/s).").as_str()));
+                    w::num_field(&mut col[0], t.t("step8.roughness"), &mut c.roughness, Some("m"), Some(t.tip("Rugozitatea absolută a peretelui conductei (k), folosită în Darcy-Weisbach. Pentru PEHD: ~0.0001 m.")));
+                    w::num_field(&mut col[1], t.t("step8.viscosity"), &mut c.viscosity, Some("m²/s"), Some(t.tip("Vâscozitatea cinematică a apei, folosită la numărul Reynolds. La 10°C: 1.31×10⁻⁶ m²/s.")));
+                    w::num_field(&mut col[2], t.t("step8.economicVelocity"), &mut c.economic_velocity, Some("m/s"), Some(t.tip("Viteza economică folosită pentru predimensionarea diametrului D_calc. Sursă: NP 133 (uzual 0.7–1.5 m/s).")));
                 });
             });
         }
         Tab::Diameters => {
             w::card(ui, |ui| {
-                w::section_title(ui, &t.t("step8.pehdTitle"));
+                w::section_title(ui, t.t("step8.pehdTitle"));
                 egui::Grid::new("pehd").striped(true).spacing([40.0, 4.0]).show(ui, |ui| {
-                    for h in ["D_ext [mm]", "Grosime [mm]", "D_int [mm]"] {
-                        header(ui, h, None);
+                    for h in ["D_ext [mm]".to_string(), format!("{} [mm]", t.t("native.wallThickness")), "D_int [mm]".to_string()] {
+                        header(ui, &h, None);
                     }
                     ui.end_row();
                     for d in PEHD_DIAMETERS {
@@ -499,20 +509,20 @@ pub fn step8(ui: &mut Ui, t: &I18n, p: &mut ProjectData, st: &mut NetworkUi) -> 
                         ui.horizontal(|ui| {
                             ui.label(RichText::new(t.t("step8.hydraulicResults")).strong());
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if w::primary_button(ui, &t.t("step8.addSection")).clicked() {
+                                if w::primary_button(ui, t.t("step8.addSection")).clicked() {
                                     let name = format!("Tr{}", p.network_sections.len() + 1);
                                     let s = NetworkSection::new(uuid::Uuid::new_v4().to_string(), name);
                                     st.selected = Some(s.id.clone());
                                     p.network_sections.push(s);
                                 }
-                                if w::secondary_button(ui, &t.t("step8.importFromCanvas")).on_hover_text(t.t("step8.importFromCanvasTip")).clicked() {
+                                if w::secondary_button(ui, t.t("step8.importFromCanvas")).on_hover_text(t.t("step8.importFromCanvasTip")).clicked() {
                                     if n_schema == 0 {
-                                        st.notice = Some((t.t("step8.noCanvasSections"), std::time::Instant::now()));
+                                        st.notice = Some((t.t("step8.noCanvasSections").to_string(), std::time::Instant::now()));
                                     } else {
                                         p.network_sections = schema::build_sections_from_schema(
                                             &p.network_schema,
                                             &p.network_sections,
-                                            scale_ratio(p),
+                                            crate::canvas::scale_ratio(p),
                                             || uuid::Uuid::new_v4().to_string(),
                                         );
                                     }
@@ -555,29 +565,25 @@ pub fn step8(ui: &mut Ui, t: &I18n, p: &mut ProjectData, st: &mut NetworkUi) -> 
     go
 }
 
-fn scale_ratio(p: &ProjectData) -> f64 {
-    crate::canvas::scale_ratio(p)
-}
-
 pub fn step9(ui: &mut Ui, t: &I18n, p: &mut ProjectData, r: &ProjectResults, net: &mut NetworkUi) -> Option<u32> {
     let pl = pal(ui);
     w::centered(ui, 960.0, |ui| {
-        w::step_header(ui, &t.t("step9.title"), &t.t("step9.subtitle"));
+        w::step_header(ui, t.t("step9.title"), t.t("step9.subtitle"));
         let secs = &p.network_sections;
         let total_len: f64 = secs.iter().map(|s| s.length).sum();
         let total_h: f64 = secs.iter().map(|s| s.h_tot).sum();
         w::card(ui, |ui| {
             ui.columns(4, |c| {
-                w::metric_centered(&mut c[0], &t.t("step9.maxHourlyFlow"), r.water_demand.q_s_or_max, "m³/h", 3);
-                w::metric_centered(&mut c[1], &t.t("step9.reservoirVolume"), r.reservoir.v_total, "m³", 3);
-                w::metric_centered(&mut c[2], &t.t("step9.totalNetworkLength"), total_len, "m", 1);
-                w::metric_centered(&mut c[3], &t.t("step9.sectionsCount"), secs.len() as f64, "", 0);
+                w::metric_centered(&mut c[0], t.t("step9.maxHourlyFlow"), r.water_demand.q_s_or_max, "m³/h", 3);
+                w::metric_centered(&mut c[1], t.t("step9.reservoirVolume"), r.reservoir.v_total, "m³", 3);
+                w::metric_centered(&mut c[2], t.t("step9.totalNetworkLength"), total_len, "m", 1);
+                w::metric_centered(&mut c[3], t.t("step9.sectionsCount"), secs.len() as f64, "", 0);
             });
             ui.add_space(14.0);
             ui.columns(4, |c| {
-                w::metric_centered(&mut c[0], &t.t("step9.totalNetworkLoss"), total_h, "m", 4);
-                w::metric_centered(&mut c[1], &t.t("step9.qZiMax"), r.water_demand.q_s_zi_max, "m³/zi", 3);
-                w::metric_centered(&mut c[2], &t.t("step9.qOrMaxLs"), r.water_demand.q_s_or_max_ls, "l/s", 3);
+                w::metric_centered(&mut c[0], t.t("step9.totalNetworkLoss"), total_h, "m", 4);
+                w::metric_centered(&mut c[1], t.t("step9.qZiMax"), r.water_demand.q_s_zi_max, "m³/zi", 3);
+                w::metric_centered(&mut c[2], t.t("step9.qOrMaxLs"), r.water_demand.q_s_or_max_ls, "l/s", 3);
             });
         });
         ui.add_space(12.0);
@@ -593,7 +599,7 @@ pub fn step9(ui: &mut Ui, t: &I18n, p: &mut ProjectData, r: &ProjectResults, net
                         ui.label(RichText::new(t.t("native.noSectionsHint")).size(12.5).color(pl.muted));
                     });
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if w::primary_button(ui, &t.t("native.goToStep8")).clicked() {
+                        if w::primary_button(ui, t.t("native.goToStep8")).clicked() {
                             go = Some(8);
                         }
                     });
@@ -609,13 +615,13 @@ pub fn step9(ui: &mut Ui, t: &I18n, p: &mut ProjectData, r: &ProjectResults, net
                 });
             };
             ui.columns(2, |c| {
-                placeholder(&mut c[0], t.t("step9.chartFlows"), 150.0);
-                placeholder(&mut c[1], t.t("step9.chartHeadloss"), 150.0);
+                placeholder(&mut c[0], t.t("step9.chartFlows").to_string(), 150.0);
+                placeholder(&mut c[1], t.t("step9.chartHeadloss").to_string(), 150.0);
             });
             ui.add_space(10.0);
-            placeholder(ui, t.t("step9.chartVelocity"), 120.0);
+            placeholder(ui, t.t("step9.chartVelocity").to_string(), 120.0);
             ui.add_space(10.0);
-            placeholder(ui, t.t("step8.hydraulicResults"), 90.0);
+            placeholder(ui, t.t("step8.hydraulicResults").to_string(), 90.0);
             ui.add_space(10.0);
             export_panel(ui, t, p, net);
             return go;
@@ -633,8 +639,8 @@ pub fn step9(ui: &mut Ui, t: &I18n, p: &mut ProjectData, r: &ProjectResults, net
                     ui,
                     &labels,
                     &[
-                        (secs.iter().map(|s| s.h_lin).collect(), charts::CYAN, t.t("charts.linearLosses")),
-                        (secs.iter().map(|s| s.h_loc).collect(), charts::AMBER, t.t("charts.localLosses")),
+                        (secs.iter().map(|s| s.h_lin).collect(), charts::CYAN, t.t("charts.linearLosses").to_string()),
+                        (secs.iter().map(|s| s.h_loc).collect(), charts::AMBER, t.t("charts.localLosses").to_string()),
                     ],
                     "m",
                     230.0,
@@ -674,7 +680,8 @@ fn export_panel(ui: &mut Ui, t: &I18n, p: &ProjectData, st: &mut NetworkUi) {
     let has_schema = !p.network_schema.is_empty();
     let drawing = if has_schema { Avail::Yes } else { Avail::NeedsSchema };
     // (secțiune, id, cheie text, disponibilitate)
-    let sections: [(&str, Vec<(ExportId, &str, Avail)>); 3] = [
+    type ExportRow = (ExportId, &'static str, Avail);
+    let sections: [(&str, Vec<ExportRow>); 3] = [
         ("exp.sectionProject", vec![(ExportId::Json, "json", Avail::Yes)]),
         (
             "exp.sectionDrawing",
@@ -707,7 +714,7 @@ fn export_panel(ui: &mut Ui, t: &I18n, p: &ProjectData, st: &mut NetworkUi) {
                     }
                 });
                 let all = !available.is_empty() && st.export_sel.len() == available.len();
-                if w::secondary_button(ui, &t.t(if all { "exp.clear" } else { "exp.selectAll" })).clicked() {
+                if w::secondary_button(ui, t.t(if all { "exp.clear" } else { "exp.selectAll" })).clicked() {
                     if all {
                         st.export_sel.clear();
                     } else {
@@ -722,7 +729,7 @@ fn export_panel(ui: &mut Ui, t: &I18n, p: &ProjectData, st: &mut NetworkUi) {
 
         for (title, rows) in &sections {
             ui.add_space(14.0);
-            w::section_title(ui, &t.t(title));
+            w::section_title(ui, t.t(title));
             if *title == "exp.sectionProject" {
                 ui.horizontal(|ui| {
                     ui.add_space(36.0);
@@ -731,7 +738,7 @@ fn export_panel(ui: &mut Ui, t: &I18n, p: &ProjectData, st: &mut NetworkUi) {
                         ui.label(RichText::new(t.t("exp.saveDesc")).size(12.0).color(pl.muted));
                     });
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if w::secondary_button(ui, &t.t("exp.saveBtn")).clicked() {
+                        if w::secondary_button(ui, t.t("exp.saveBtn")).clicked() {
                             st.save_now = true;
                         }
                     });
@@ -746,7 +753,7 @@ fn export_panel(ui: &mut Ui, t: &I18n, p: &ProjectData, st: &mut NetworkUi) {
                         let label = t.t(&format!("exp.{key}"));
                         let cb = ui.checkbox(&mut sel, "");
                         let enabled = cb.enabled();
-                        cb.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, enabled, sel, &label));
+                        cb.widget_info(|| egui::WidgetInfo::selected(egui::Role::CheckBox, enabled, sel, label));
                         if cb.changed() {
                             if sel {
                                 st.export_sel.insert(*id);
@@ -763,7 +770,7 @@ fn export_panel(ui: &mut Ui, t: &I18n, p: &ProjectData, st: &mut NetworkUi) {
                     });
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_enabled_ui(on && !busy, |ui| {
-                            if w::secondary_button(ui, &t.t("exp.exportOne")).clicked() {
+                            if w::secondary_button(ui, t.t("exp.exportOne")).clicked() {
                                 st.export_req = Some(vec![*id]);
                             }
                         });
@@ -820,6 +827,5 @@ mod tests {
         h.drop_at(grip + egui::vec2(0.0, -1100.0));
         h.run();
         assert_eq!(*h.state(), AREA_MIN);
-        let _ = Stroke::NONE;
     }
 }

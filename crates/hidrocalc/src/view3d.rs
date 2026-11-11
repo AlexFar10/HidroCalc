@@ -53,9 +53,7 @@ fn setting_f64(p: &ProjectData, k: &str, d: f64) -> f64 {
     p.network_canvas_settings.get(k).and_then(Value::as_f64).unwrap_or(d)
 }
 fn set(p: &mut ProjectData, k: &str, v: Value) {
-    if let Some(o) = p.network_canvas_settings.as_object_mut() {
-        o.insert(k.into(), v);
-    }
+    p.network_canvas_settings.set(k, v);
 }
 
 /// Camera: punctul privit, poziția ochiului și baza ortonormată.
@@ -128,8 +126,7 @@ pub(crate) fn model_groups(scene: &Scene) -> Vec<(String, crate::mesh3d::Scene3)
 
     // Conducte: sub pământ (stratul 0), tuburi împărțite în bucăți pentru sortare
     for p in &scene.pipes {
-        let mut s3 = Scene3::default();
-        s3.layer = 0;
+        let mut s3 = Scene3 { layer: 0, ..Default::default() };
         let (a, b) = (f3(p.start), f3(p.end));
         let col = p.color.as_deref().and_then(|c| u32::from_str_radix(c.trim_start_matches('#'), 16).ok()).filter(|c| *c != 0x1A1A1A).map(rgb).unwrap_or(rgb(0x2563EB));
         let len = m3::dot(m3::sub(b, a), m3::sub(b, a)).sqrt();
@@ -186,8 +183,7 @@ pub(crate) fn model_groups(scene: &Scene) -> Vec<(String, crate::mesh3d::Scene3)
         groups.push((label, s3));
     }
     if !scene.topo.is_empty() {
-        let mut s3 = Scene3::default();
-        s3.layer = 2;
+        let mut s3 = Scene3 { layer: 2, ..Default::default() };
         for tp in &scene.topo {
             s3.sphere(f3(*tp), h * 0.12, rgb(0x16A34A));
         }
@@ -211,12 +207,12 @@ impl Camera {
 }
 
 impl View3D {
-    fn terrain_grid(p: &ProjectData) -> Option<TerrainGrid> {
-        p.network_canvas_settings.get("terrainGrid").and_then(|v| serde_json::from_value(v.clone()).ok())
+    fn terrain_grid(p: &ProjectData) -> Option<&TerrainGrid> {
+        p.network_canvas_settings.terrain_grid.as_ref()
     }
 
     /// Grila salvată, doar dacă aparține ancorei curente (altfel e de la altă poziție a hărții).
-    fn current_grid(p: &ProjectData) -> Option<TerrainGrid> {
+    fn current_grid(p: &ProjectData) -> Option<&TerrainGrid> {
         let a = map_ui::anchor(p)?;
         let key = scene3d::terrain_key(&a, map_ui::rotation(p), crate::canvas::scale_ratio(p));
         Self::terrain_grid(p).filter(|g| g.key == key && g.is_valid())
@@ -229,7 +225,7 @@ impl View3D {
                 self.grid_rx = None;
                 match res {
                     Ok(g) => {
-                        set(p, "terrainGrid", serde_json::to_value(g).unwrap_or(Value::Null));
+                        p.network_canvas_settings.terrain_grid = Some(g);
                         self.grid_error = None;
                     }
                     Err(e) => self.grid_error = Some(e),
@@ -244,7 +240,7 @@ impl View3D {
         let rot = map_ui::rotation(p);
         let sr = crate::canvas::scale_ratio(p);
         let key = scene3d::terrain_key(&a, rot, sr);
-        if scene3d::grid_covers(Self::terrain_grid(p).as_ref(), &b, &key) {
+        if scene3d::grid_covers(Self::terrain_grid(p), &b, &key) {
             return;
         }
         let (gb, nx, ny, pts) = scene3d::grid_nodes(&b, sr);
@@ -258,7 +254,7 @@ impl View3D {
         let (tx, rx) = channel();
         let ctx = ctx.clone();
         std::thread::spawn(move || {
-            let dir = directories::ProjectDirs::from("ro", "hidro", "HidroCalc").map(|d| d.cache_dir().join("terrarium").join(elevation::ZOOM.to_string()));
+            let dir = crate::db::dem_cache_dir();
             let res = dir.ok_or_else(|| "cache".to_string()).and_then(|d| elevation::fetch_elevations(&ll, d)).map(|heights| TerrainGrid {
                 min_x: gb.min_x,
                 min_y: gb.min_y,
@@ -299,7 +295,7 @@ impl View3D {
             pipe_depth: setting_f64(p, "pipeDepth", DEFAULT_PIPE_DEPTH),
             exaggeration,
             reservoir_ground: p.reservoir.cota_teren,
-            terrain: grid.as_ref(),
+            terrain: grid,
             topo: &topo,
             interpolate_ground: show_terrain,
         })
@@ -420,7 +416,7 @@ impl View3D {
         self.finish_png(&ctx);
 
         ui.horizontal(|ui| {
-            if w::secondary_button(ui, &t.t("view3d.resetRelief")).on_hover_text(t.t("view3d.resetReliefTip")).clicked() {
+            if w::secondary_button(ui, t.t("view3d.resetRelief")).on_hover_text(t.t("view3d.resetReliefTip")).clicked() {
                 set(p, "view3DExaggeration", json!(Self::pleasant_exaggeration(p)));
             }
         });
@@ -450,7 +446,7 @@ impl View3D {
         self.last_rect = rect;
         self.interact(ui, &resp, &scene);
         w::focus_ring(ui, &resp, 10);
-        w::describe(&resp, egui::Role::Canvas, &t.t("view3d.a11yLabel"));
+        w::describe(&resp, egui::Role::Canvas, t.t("view3d.a11yLabel"));
         let painter = ui.painter_at(rect);
         if p.network_schema.is_empty() {
             painter.rect_filled(rect, 10.0, Color32::from_rgb(0xEE, 0xF2, 0xF6));
@@ -473,9 +469,9 @@ impl View3D {
             let status = if scene.terrain_interpolated {
                 format!("{} · {}", t.t("native.groundInterpolated"), t.t("view3d.terrainNeedsAnchor"))
             } else if map_ui::anchor(p).is_none() {
-                t.t("view3d.terrainNeedsAnchor")
+                t.t("view3d.terrainNeedsAnchor").to_string()
             } else if self.grid_rx.is_some() {
-                t.t("view3d.terrainLoading")
+                t.t("view3d.terrainLoading").to_string()
             } else if let Some(e) = &self.grid_error {
                 format!("{} {e}", t.t("view3d.terrainError"))
             } else if let Some(tr) = &scene.terrain {

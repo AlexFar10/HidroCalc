@@ -26,12 +26,16 @@ pub struct TileCache {
     entries: HashMap<TileKey, Entry>,
     inflight: HashSet<TileKey>,
     req_tx: Sender<TileKey>,
-    res_rx: Receiver<(TileKey, Result<ColorImage, String>)>,
+    /// `None` = cererea a fost abandonată (dala nu mai era pe ecran când i-a venit rândul).
+    res_rx: Receiver<(TileKey, Option<Result<ColorImage, String>>)>,
+    /// Dalele cerute în cadrul curent; firele de lucru sar peste cele care nu mai sunt aici,
+    /// ca la deplasarea rapidă a hărții să nu se descarce dale deja ieșite din ecran.
+    wanted: Arc<Mutex<HashSet<TileKey>>>,
     clock: u64,
 }
 
 fn disk_dir() -> Option<PathBuf> {
-    directories::ProjectDirs::from("ro", "hidro", "HidroCalc").map(|d| d.cache_dir().join("osm-tiles"))
+    crate::db::cache_dir("osm-tiles")
 }
 
 fn load(key: TileKey, agent: &ureq::Agent) -> Result<ColorImage, String> {
@@ -65,7 +69,9 @@ impl TileCache {
         let (req_tx, req_rx) = channel::<TileKey>();
         let (res_tx, res_rx) = channel();
         let req_rx = Arc::new(Mutex::new(req_rx));
+        let wanted: Arc<Mutex<HashSet<TileKey>>> = Arc::default();
         for _ in 0..WORKERS {
+            let wanted = Arc::clone(&wanted);
             let rx = Arc::clone(&req_rx);
             let tx = res_tx.clone();
             let ctx = ctx.clone();
@@ -79,7 +85,8 @@ impl TileCache {
                         },
                         Err(_) => return,
                     };
-                    let res = load(key, &agent);
+                    let still_wanted = wanted.lock().map(|w| w.contains(&key)).unwrap_or(true);
+                    let res = still_wanted.then(|| load(key, &agent));
                     if tx.send((key, res)).is_err() {
                         return;
                     }
@@ -87,13 +94,17 @@ impl TileCache {
                 }
             });
         }
-        Self { entries: HashMap::new(), inflight: HashSet::new(), req_tx, res_rx, clock: 0 }
+        Self { entries: HashMap::new(), inflight: HashSet::new(), req_tx, res_rx, wanted, clock: 0 }
     }
 
     /// Preia dalele sosite de la firele de lucru.
     pub fn poll(&mut self, ctx: &egui::Context) {
+        if let Ok(mut w) = self.wanted.lock() {
+            w.clear();
+        }
         while let Ok((key, res)) = self.res_rx.try_recv() {
             self.inflight.remove(&key);
+            let Some(res) = res else { continue };
             self.clock += 1;
             let entry = match res {
                 Ok(img) => Entry::Ready(ctx.load_texture(format!("osm-{}-{}-{}", key.0, key.1, key.2), img, TextureOptions::LINEAR), self.clock),
@@ -126,6 +137,9 @@ impl TileCache {
             Some(Entry::Error(at)) if at.elapsed() < ERROR_RETRY => return None,
             _ => {}
         }
+        if let Ok(mut w) = self.wanted.lock() {
+            w.insert(key);
+        }
         if self.inflight.insert(key) {
             let _ = self.req_tx.send(key);
         }
@@ -133,7 +147,7 @@ impl TileCache {
     }
 
     /// Doar din cache (fără cerere), pentru dala părinte.
-    pub fn peek(&mut self, key: TileKey) -> Option<egui::TextureId> {
+    pub fn peek(&self, key: TileKey) -> Option<egui::TextureId> {
         match self.entries.get(&key) {
             Some(Entry::Ready(tex, _)) => Some(tex.id()),
             _ => None,

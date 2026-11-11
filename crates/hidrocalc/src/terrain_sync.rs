@@ -24,10 +24,6 @@ pub struct TerrainSync {
     last_error: Option<String>,
 }
 
-fn dem_cache_dir() -> Option<std::path::PathBuf> {
-    directories::ProjectDirs::from("ro", "hidro", "HidroCalc").map(|d| d.cache_dir().join("terrarium").join(elevation::ZOOM.to_string()))
-}
-
 impl TerrainSync {
     /// Apelat la fiecare cadru; întoarce un mesaj de eroare nou (de afișat o singură dată).
     pub fn tick(&mut self, ctx: &eframe::egui::Context, p: &mut ProjectData) -> Option<String> {
@@ -72,7 +68,13 @@ impl TerrainSync {
         for v in [anchor.lat, anchor.lng, anchor.world_x, anchor.world_y, map_ui::rotation(p), map_ui::topo_radius(p), crate::canvas::scale_ratio(p)] {
             v.to_bits().hash(&mut h);
         }
-        (enabled, topo.len()).hash(&mut h);
+        enabled.hash(&mut h);
+        // Conținutul punctelor, nu doar numărul lor: înlocuirea lor redeclanșează calculul.
+        for t in topo {
+            for v in [t.lat, t.lng, t.z] {
+                v.to_bits().hash(&mut h);
+            }
+        }
         let key = h.finish();
         if self.key != Some(key) {
             self.key = Some(key);
@@ -96,7 +98,7 @@ impl TerrainSync {
                 let (tx, rx) = channel();
                 let ctx = ctx.clone();
                 std::thread::spawn(move || {
-                    let res = match dem_cache_dir() {
+                    let res = match crate::db::dem_cache_dir() {
                         Some(dir) => elevation::fetch_elevations(&pts, dir),
                         None => Err("Directorul de cache nu e disponibil".into()),
                     };
@@ -151,10 +153,10 @@ mod tests {
         }];
         p.network_sections = vec![NetworkSection::new("s1".into(), "Tr1".into())];
         let end = world_to_latlng(401.0, 2.0, &a, 0.0); // ~0.6 m de capătul aval
-        let o = p.network_canvas_settings.as_object_mut().unwrap();
-        o.insert("mapAnchor".into(), serde_json::to_value(a).unwrap());
-        o.insert("autoTerrainCota".into(), json!(false));
-        o.insert("topoPoints".into(), json!([{ "id": "t", "lat": end.lat, "lng": end.lng, "z": 93.27 }]));
+        let o = &mut p.network_canvas_settings;
+        o.map_anchor = Some(a);
+        o.set("autoTerrainCota", json!(false));
+        o.set("topoPoints", json!([{ "id": "t", "lat": end.lat, "lng": end.lng, "z": 93.27 }]));
 
         let ctx = eframe::egui::Context::default();
         let mut sync = TerrainSync::default();

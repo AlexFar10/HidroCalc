@@ -2,6 +2,8 @@
 //! (`assets/locales/{ro,en}.json`, chei cu puncte, interpolare `{{nume}}`).
 
 use serde_json::Value;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Mutex, OnceLock};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
 pub enum Lang {
@@ -10,48 +12,104 @@ pub enum Lang {
     En,
 }
 
+/// Textele unei limbi, aplatizate la pornire: o căutare = o singură interogare de tabel.
+#[derive(Default)]
+struct Table {
+    texts: HashMap<&'static str, &'static str>,
+    lists: HashMap<&'static str, Vec<&'static str>>,
+    /// Doar în engleză: textele de ajutor, indexate după textul românesc din cod.
+    tips: HashMap<&'static str, &'static str>,
+}
+
+fn leak(s: &str) -> &'static str {
+    Box::leak(s.to_owned().into_boxed_str())
+}
+
+impl Table {
+    fn parse(json: &str) -> Self {
+        let root: Value = serde_json::from_str(json).expect("fișier de traduceri invalid");
+        let mut t = Table::default();
+        if let Some(Value::Object(tips)) = root.get("tips") {
+            t.tips = tips.iter().filter_map(|(k, v)| Some((leak(k), leak(v.as_str()?)))).collect();
+        }
+        t.walk("", &root);
+        t
+    }
+
+    fn walk(&mut self, path: &str, v: &Value) {
+        match v {
+            Value::String(s) => {
+                self.texts.insert(leak(path), leak(s));
+            }
+            Value::Array(a) => {
+                self.lists.insert(leak(path), a.iter().filter_map(Value::as_str).map(leak).collect());
+                for (i, item) in a.iter().enumerate() {
+                    self.walk(&format!("{path}.{i}"), item);
+                }
+            }
+            Value::Object(o) if path != "tips" => {
+                for (k, item) in o {
+                    let child = if path.is_empty() { k.clone() } else { format!("{path}.{k}") };
+                    self.walk(&child, item);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Tabelele celor două limbi, construite o singură dată (textele trăiesc cât aplicația).
+fn tables() -> &'static (Table, Table) {
+    static TABLES: OnceLock<(Table, Table)> = OnceLock::new();
+    TABLES.get_or_init(|| {
+        (Table::parse(include_str!("../../../assets/locales/ro.json")), Table::parse(include_str!("../../../assets/locales/en.json")))
+    })
+}
+
+/// Cheile fără traducere se afișează ca atare; fiecare se păstrează o singură dată.
+fn missing_key(key: &str) -> &'static str {
+    static MISSING: OnceLock<Mutex<HashSet<&'static str>>> = OnceLock::new();
+    let mut set = MISSING.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner());
+    match set.get(key) {
+        Some(k) => k,
+        None => {
+            let k = leak(key);
+            set.insert(k);
+            k
+        }
+    }
+}
+
 pub struct I18n {
-    ro: Value,
-    en: Value,
     pub lang: Lang,
 }
 
 impl I18n {
     pub fn new(lang: Lang) -> Self {
-        let parse = |s: &str| serde_json::from_str(s).expect("fișier de traduceri invalid");
-        Self {
-            ro: parse(include_str!("../../../assets/locales/ro.json")),
-            en: parse(include_str!("../../../assets/locales/en.json")),
-            lang,
-        }
+        tables();
+        Self { lang }
     }
 
-    fn lookup(&self, key: &str) -> Option<&Value> {
-        let primary = if self.lang == Lang::En { &self.en } else { &self.ro };
-        find(primary, key).or_else(|| find(&self.ro, key))
-    }
-
-    /// Textul tradus pentru `key`; dacă lipsește, cheia însăși (ușor de observat).
-    pub fn t(&self, key: &str) -> String {
-        match self.lookup(key) {
-            Some(Value::String(s)) => s.clone(),
-            _ => key.to_string(),
-        }
+    /// Textul tradus pentru `key`, fără alocare; dacă lipsește, cheia însăși (ușor de observat).
+    pub fn t(&self, key: &str) -> &'static str {
+        let (ro, en) = tables();
+        let primary = if self.lang == Lang::En { en } else { ro };
+        primary.texts.get(key).or_else(|| ro.texts.get(key)).copied().unwrap_or_else(|| missing_key(key))
     }
 
     /// Textul de ajutor (tooltip): scris în română în cod; în engleză, tradus din `tips`.
-    pub fn tip(&self, ro: &str) -> String {
+    pub fn tip<'a>(&self, ro: &'a str) -> &'a str {
         if self.lang == Lang::En {
-            if let Some(Value::String(s)) = self.en.get("tips").and_then(|t| t.get(ro)) {
-                return s.clone();
+            if let Some(s) = tables().1.tips.get(ro) {
+                return s;
             }
         }
-        ro.to_string()
+        ro
     }
 
     /// Ca [`Self::t`], cu înlocuirea `{{nume}}` → valoare.
     pub fn tf(&self, key: &str, args: &[(&str, &str)]) -> String {
-        let mut s = self.t(key);
+        let mut s = self.t(key).to_string();
         for (k, v) in args {
             s = s.replace(&format!("{{{{{k}}}}}"), v);
         }
@@ -59,19 +117,11 @@ impl I18n {
     }
 
     /// O listă de texte (ex. `steps.names`).
-    pub fn list(&self, key: &str) -> Vec<String> {
-        match self.lookup(key) {
-            Some(Value::Array(a)) => a.iter().filter_map(|v| v.as_str().map(str::to_owned)).collect(),
-            _ => Vec::new(),
-        }
+    pub fn list(&self, key: &str) -> &'static [&'static str] {
+        let (ro, en) = tables();
+        let primary = if self.lang == Lang::En { en } else { ro };
+        primary.lists.get(key).or_else(|| ro.lists.get(key)).map_or(&[], Vec::as_slice)
     }
-}
-
-fn find<'a>(root: &'a Value, key: &str) -> Option<&'a Value> {
-    key.split('.').try_fold(root, |v, part| match v {
-        Value::Array(a) => part.parse::<usize>().ok().and_then(|i| a.get(i)),
-        _ => v.get(part),
-    })
 }
 
 #[cfg(test)]

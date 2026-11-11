@@ -7,7 +7,7 @@
 //! - [`pipeline`] — lanțul de calcul al pașilor 3–7 direct pe `ProjectData`
 //! - [`schema`] — schema rețelei: scară, import topologie tronsoane
 //! - [`defaults`] — valori implicite normative
-//! - [`export`] — date pentru documente, cantități, DXF, XLSX
+//! - [`export`] — date pentru documente, cantități, DXF, Memoriu tehnic (.docx)
 //! - [`geo`] — Web Mercator (dale OSM), ancora hărții, Stereo 70 → WGS84
 //! - [`topo`] — import puncte topo (CSV/GPX/KML, Stereo 70)
 //! - [`terrain`] — completarea automată a cotelor (DEM + topo)

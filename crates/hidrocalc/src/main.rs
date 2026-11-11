@@ -25,7 +25,25 @@ fn window_icon() -> eframe::egui::IconData {
     eframe::egui::IconData { width: img.width(), height: img.height(), rgba: img.into_raw() }
 }
 
+/// Jurnal minimal pe stderr (avertismente și erori; totul în build-urile de dezvoltare).
+struct StderrLog;
+
+impl log::Log for StderrLog {
+    fn enabled(&self, m: &log::Metadata) -> bool {
+        m.target().starts_with("hidro") && m.level() <= log::max_level()
+    }
+    fn log(&self, r: &log::Record) {
+        if self.enabled(r.metadata()) {
+            eprintln!("[{}] {}", r.level(), r.args());
+        }
+    }
+    fn flush(&self) {}
+}
+
 fn main() -> eframe::Result {
+    if log::set_logger(&StderrLog).is_ok() {
+        log::set_max_level(if cfg!(debug_assertions) { log::LevelFilter::Debug } else { log::LevelFilter::Warn });
+    }
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("HidroCalc")

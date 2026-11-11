@@ -2,14 +2,27 @@
 //! X_dxf = x_px × mpp, Y_dxf = −y_px × mpp (axa Y inversată), unități: metri.
 
 use crate::model::{SchemaElement, SchemaKind};
-use crate::schema::meters_per_px;
+use crate::schema::{meters_per_px, BOX_H, BOX_W, CIRCLE_R, SUB_H, SUB_W};
 use std::fmt::Write;
 
-const BOX_W: f64 = 52.0;
-const BOX_H: f64 = 52.0;
-const CIRCLE_R: f64 = 10.0;
-const SUB_W: f64 = 180.0;
-const SUB_H: f64 = 100.0;
+/// Text pentru DXF R12: fișierul e ASCII, deci caracterele ne-ASCII (diacriticele) se scriu
+/// ca `\U+XXXX`, forma pe care o citesc AutoCAD și celelalte programe CAD.
+fn dxf_text(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut units = [0u16; 2];
+    for c in s.chars() {
+        if c.is_ascii() && !c.is_ascii_control() {
+            out.push(c);
+        } else if c.is_ascii_control() {
+            out.push(' ');
+        } else {
+            for u in c.encode_utf16(&mut units) {
+                let _ = write!(out, "\\U+{u:04X}");
+            }
+        }
+    }
+    out
+}
 
 const LAYERS: &[(&str, i32)] = &[
     ("TRONSOANE", 5),
@@ -55,7 +68,7 @@ impl Dxf {
         self.f(20, y);
         self.g(30, "0.0");
         self.f(40, h);
-        self.g(1, text);
+        self.g(1, dxf_text(text));
         self.g(72, 1);
         self.f(11, x);
         self.f(21, y);
@@ -187,6 +200,8 @@ mod tests {
         assert!(d.contains(" 11\n264.580000\n")); // 1000 px × 0.26458 m
         assert!(d.contains(" 20\n-26.458000\n")); // y inversat
         assert!(d.contains("  1\nTr 1\n"));
+        assert!(d.is_ascii(), "DXF R12 trebuie să fie ASCII");
+        assert_eq!(dxf_text("Cămin ș"), "C\\U+0103min \\U+0219");
         assert!(d.trim_end().ends_with("EOF"));
         assert!(export(&[], 1000.0).is_none());
     }

@@ -1,8 +1,6 @@
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone)]
 pub struct SectionInput {
     pub id: String,
     pub name: String,
@@ -11,8 +9,7 @@ pub struct SectionInput {
     pub h_tot: f64,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone)]
 pub struct NodePressure {
     pub section_id: String,
     pub section_name: String,

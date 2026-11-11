@@ -31,9 +31,23 @@ pub struct Db {
     conn: Connection,
 }
 
+fn project_dirs() -> Option<directories::ProjectDirs> {
+    directories::ProjectDirs::from("ro", "hidro", "HidroCalc")
+}
+
 /// Directorul de date al aplicației (ex. macOS: `~/Library/Application Support/ro.hidro.HidroCalc`).
 pub fn data_dir() -> Option<PathBuf> {
-    directories::ProjectDirs::from("ro", "hidro", "HidroCalc").map(|d| d.data_dir().to_path_buf())
+    project_dirs().map(|d| d.data_dir().to_path_buf())
+}
+
+/// Un subdirector din cache-ul aplicației (dale OSM, dale de altitudini).
+pub fn cache_dir(sub: &str) -> Option<PathBuf> {
+    project_dirs().map(|d| d.cache_dir().join(sub))
+}
+
+/// Cache-ul dalelor de altitudini (Terrarium), pe nivelul de zoom folosit.
+pub fn dem_cache_dir() -> Option<PathBuf> {
+    cache_dir("terrarium").map(|d| d.join(hidro_core::elevation::ZOOM.to_string()))
 }
 
 /// Baza de date a aplicației Tauri (`app_config_dir()/hidro.db`, identifier `ro.hidro.calc`).
@@ -137,6 +151,12 @@ impl Db {
             )
             .map_err(|e| e.to_string())?;
         Ok(())
+    }
+
+    /// Face scrierile să eșueze (pentru testele de eroare la salvare).
+    #[cfg(test)]
+    pub fn break_for_test(&self) {
+        self.conn.execute("DROP TABLE projects", []).unwrap();
     }
 
     pub fn delete(&self, id: &str) -> Result<(), String> {

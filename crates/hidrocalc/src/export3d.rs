@@ -190,7 +190,7 @@ struct Bin {
 impl Bin {
     /// Adaugă un accessor f32 (`VEC3` sau `VEC4`) și întoarce indexul lui.
     fn accessor(&mut self, values: &[f32], comps: usize, bounds: bool) -> usize {
-        while self.data.len() % 4 != 0 {
+        while !self.data.len().is_multiple_of(4) {
             self.data.push(0);
         }
         let offset = self.data.len();
